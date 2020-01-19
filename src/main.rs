@@ -60,7 +60,7 @@ impl System {
         let hidpi_factor = platform.hidpi_factor();
 
         // Define the fonts and scale them to the DPI factor
-        let font_size = (24.0*hidpi_factor) as f32;
+        let font_size = (20.0*hidpi_factor) as f32;
         imgui.fonts().add_font(&[
             FontSource::DefaultFontData {   // built-in font
                 config: Some(FontConfig {
@@ -156,24 +156,28 @@ impl System {
 
 
 pub struct State {
-    foo: bool
+    three_state: bool
 }
 
 
 fn main() {
     let mut state = State {
-        foo: false
+        three_state: false
     };
 
     let system = System::new(file!());
     let alt_font = system.alt_font;
     system.main_loop(|run, ui| {
-        let bg_color = [0.85490, 0.83922, 0.79608, 1.0];    // Putty
+        const BG_COLOR: [f32; 4] = [0.85490, 0.83922, 0.79608, 1.0];    // Putty
+        const RED_COLOR: [f32; 4] = [1.0, 0.0, 0.0, 1.0];
+        const GREEN_COLOR: [f32; 4] = [0.0, 1.0, 0.0, 1.0];
+        const BLACK_COLOR: [f32; 4] = [0.0, 0.0, 0.0, 1.0];
+
         //let mut metrics_open = false;
 
         // Set the current font and OS-level window background color
         let _alt_font = ui.push_font(alt_font);
-        let tw = ui.push_style_color(StyleColor::WindowBg, bg_color);
+        let tw = ui.push_style_color(StyleColor::WindowBg, BG_COLOR);
 
         // Create our UI window
         let mut window = Window::new(im_str!("UI One"))
@@ -188,16 +192,19 @@ fn main() {
 
         // Build our UI window and its inner widgets in the closure
         window.build(ui, || {
+            let frames = ui.frame_count();
+            let clock = ui.time();
+            let phase = (clock.fract()*2.0) as i64;
+
             // Set corner-rounding and border size for widget frames
             let t0 = ui.push_style_vars(&[
                 StyleVar::FrameRounding(10.0),
-                StyleVar::FrameBorderSize(4.0)
+                StyleVar::FrameBorderSize(2.0)
             ]);
             
             // Define the Click Me button and its click handler
             if ui.button(im_str!("Click Me"), [120.0, 80.0]) {
-                state.foo = !state.foo;
-                println!("Button clicked... foo={}, frames={}", state.foo, ui.frame_count());
+                println!("Click Me clicked... frames={}, time={}, fps={}", frames, clock, frames as f64/clock);
             }
 
             // Define the Me Too! button and its click handler
@@ -208,12 +215,24 @@ fn main() {
 
             // Define the Me Three button and its click handler
             ui.set_cursor_pos([350.0, 350.0]);
-            let t1 = ui.push_style_color(StyleColor::Text, [0.0, 0.0, 0.0, 1.0]);
-            let t2 = ui.push_style_color(StyleColor::Button, [1.0, 0.0, 0.0, 1.0]);
-            let t3 = ui.push_style_color(StyleColor::Border, [0.0, 0.0, 0.0, 1.0]);
+            let t1 = ui.push_style_color(StyleColor::Text, BLACK_COLOR);
+            let t2 = ui.push_style_colors(&[
+                (StyleColor::Button, if state.three_state {GREEN_COLOR} else {RED_COLOR}),
+                (StyleColor::ButtonActive, if state.three_state {GREEN_COLOR} else {RED_COLOR}),
+                (StyleColor::ButtonHovered, if state.three_state {GREEN_COLOR} else {RED_COLOR})
+            ]);
+            let t3 = ui.push_style_color(StyleColor::Border, BLACK_COLOR);
             if ui.button(im_str!("Me Three"), [100.0,100.0]) {
-                println!("Me Three clicked...");
+                state.three_state = !state.three_state;
+                println!("Me Three clicked... state={}", state.three_state);
             }
+
+            let draw_list = ui.get_window_draw_list();
+            draw_list.add_circle([50.0, 350.0], 12.0, RED_COLOR)
+                     .filled(phase == 1)
+                     .num_segments(20)
+                     .thickness(1.0)
+                     .build();
 
             // Pop all of the style-stack tokens
             t3.pop(&ui);
