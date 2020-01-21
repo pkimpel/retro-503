@@ -60,7 +60,7 @@ impl System {
         let hidpi_factor = platform.hidpi_factor();
 
         // Define the fonts and scale them to the DPI factor
-        let font_size = (20.0*hidpi_factor) as f32;
+        let font_size = (12.0*hidpi_factor) as f32;
         imgui.fonts().add_font(&[
             FontSource::DefaultFontData {   // built-in font
                 config: Some(FontConfig {
@@ -178,43 +178,47 @@ fn main() {
         // Set the current font and OS-level window background color
         let _alt_font = ui.push_font(alt_font);
         let tw = ui.push_style_color(StyleColor::WindowBg, BG_COLOR);
+        let ts = ui.push_style_var(StyleVar::WindowRounding(0.0));
 
         // Create our UI window
         let mut window = Window::new(im_str!("UI One"))
             .resizable(false)
             .scroll_bar(false)
-            .collapsible(true)
+            .collapsible(false)
             .menu_bar(false)
+            .title_bar(false)
             .scrollable(false)
             .position([6.0, 6.0], Condition::FirstUseEver)
             .size([500.0, 500.0], Condition::FirstUseEver);
-        window = window.opened(run);    // Enable clicking of the window-close icon
+        //window = window.opened(run);    // Enable clicking of the window-close icon
 
         // Build our UI window and its inner widgets in the closure
         window.build(ui, || {
             let frames = ui.frame_count();
             let clock = ui.time();
             let phase = (clock.fract()*2.0) as i64;
+            let angle = ((clock*6.0)%360.0).to_radians();
 
             // Set corner-rounding and border size for widget frames
             let t0 = ui.push_style_vars(&[
-                StyleVar::FrameRounding(10.0),
+                //StyleVar::FrameRounding(10.0),
                 StyleVar::FrameBorderSize(2.0)
             ]);
             
             // Define the Click Me button and its click handler
-            if ui.button(im_str!("Click Me"), [120.0, 80.0]) {
+            ui.set_cursor_pos([50.0, 50.0]);
+            if ui.button(im_str!("Click Me"), [60.0, 40.0]) {
                 println!("Click Me clicked... frames={}, time={}, fps={}", frames, clock, frames as f64/clock);
             }
 
             // Define the Me Too! button and its click handler
-            ui.set_cursor_pos([200.0, 150.0]);
-            if ui.button(im_str!("Me Too!"), [80.0, 120.0]) {
+            ui.set_cursor_pos([230.0, 230.0]);
+            if ui.button(im_str!("Me\nToo!"), [40.0, 40.0]) {
                 println!("Me too! clicked...");
             }
 
             // Define the Me Three button and its click handler
-            ui.set_cursor_pos([350.0, 350.0]);
+            ui.set_cursor_pos([390.0, 390.0]);
             let t1 = ui.push_style_color(StyleColor::Text, BLACK_COLOR);
             let t2 = ui.push_style_colors(&[
                 (StyleColor::Button, if state.three_state {GREEN_COLOR} else {RED_COLOR}),
@@ -222,15 +226,19 @@ fn main() {
                 (StyleColor::ButtonHovered, if state.three_state {GREEN_COLOR} else {RED_COLOR})
             ]);
             let t3 = ui.push_style_color(StyleColor::Border, BLACK_COLOR);
-            if ui.button(im_str!("Me Three"), [100.0,100.0]) {
+            if ui.button(im_str!("DIGITAL\nPLOTTER"), [60.0,60.0]) {
                 state.three_state = !state.three_state;
                 println!("Me Three clicked... state={}", state.three_state);
             }
 
+            // Define the blinking circle
+            let (x, y) = angle.sin_cos();
+            let x = x as f32*125.0 + 250.0;
+            let y = 250.0 - y as f32*125.0;
             let draw_list = ui.get_window_draw_list();
-            draw_list.add_circle([50.0, 350.0], 12.0, RED_COLOR)
-                     .filled(phase == 1)
-                     .num_segments(20)
+            draw_list.add_circle([x, y], 8.0, if phase==0 {BLACK_COLOR} else {RED_COLOR})
+                     .filled(true)
+                     .num_segments(16)
                      .thickness(1.0)
                      .build();
 
@@ -242,6 +250,7 @@ fn main() {
         });
 
         // Pop the window background and font tokens
+        ts.pop(&ui);
         tw.pop(&ui);
         _alt_font.pop(&ui);       // revert to default font
 

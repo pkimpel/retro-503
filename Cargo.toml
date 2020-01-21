@@ -1,6 +1,6 @@
 [package]
 name = "ui_one"
-version = "0.2.0"
+version = "0.3.0"
 authors = ["Paul Kimpel <paul.kimpel@digm.com>"]
 edition = "2018"
 
