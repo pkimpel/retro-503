@@ -160,10 +160,15 @@ pub type Position = [f32; 2];
 pub type FrameSize = [f32; 2];
 pub type Color4 = [f32; 4];
 
-const BG_COLOR: Color4 = [0.85490, 0.83922, 0.79608, 1.0];    // Putty
-const RED_COLOR: Color4 = [1.0, 0.0, 0.0, 1.0];
-const GREEN_COLOR: Color4 = [0.0, 1.0, 0.0, 1.0];
-const BLACK_COLOR: Color4 = [0.0, 0.0, 0.0, 1.0];
+static BG_COLOR: Color4 = [0.85490, 0.83922, 0.79608, 1.0];    // Putty
+static RED_DARK: Color4 = [0.6, 0.0, 0.0, 1.0];
+static RED_COLOR: Color4 = [1.0, 0.0, 0.0, 1.0];
+static GREEN_DARK: Color4 = [0.0, 0.6, 0.0, 1.0];
+static GREEN_COLOR: Color4 = [0.0, 1.0, 0.0, 1.0];
+static BLACK_COLOR: Color4 = [0.0, 0.0, 0.0, 1.0];
+static GRAY_COLOR: Color4 = [0.5, 0.5, 0.5, 1.0];
+static AMBER_COLOR: Color4 = [1.0, 0.494, 0.0, 1.0];
+static AMBER_DARK: Color4 = [0.6, 0.296, 0.0, 1.0];
 
 
 pub struct Button<'a> {
@@ -180,15 +185,15 @@ pub struct Button<'a> {
 
 impl Default for Button<'_> {
     fn default<'a>() -> Self {
-        let label_text = im_str!("Button");
+        let label_text = im_str!("");
         Button {
             position: [0.0, 0.0],
             frame_size: [50.0, 50.0],
-            off_color: RED_COLOR, 
+            off_color: GREEN_COLOR, 
             on_color: GREEN_COLOR,
-            border_color: BLACK_COLOR,
-            border_size: 2.0,
-            border_rounding: 0.0,
+            border_color: GRAY_COLOR,
+            border_size: 6.0,
+            border_rounding: 1.0,
             label_color: BLACK_COLOR,
             label_text
         }
@@ -202,7 +207,68 @@ impl Button<'_> {
             StyleVar::FrameBorderSize(self.border_size)
         ]);
 
-        let color = if state {self.on_color} else {self.off_color};
+        let color = &if state {self.on_color} else {self.off_color};
+        let t1 = ui.push_style_colors(&[
+            (StyleColor::Text, self.label_color),
+            (StyleColor::Border, self.border_color),
+            (StyleColor::Button, *color),
+            (StyleColor::ButtonActive, *color),
+            (StyleColor::ButtonHovered, *color)
+        ]);
+
+        ui.set_cursor_pos(self.position);
+        let clicked = ui.button(self.label_text, self.frame_size);
+        
+        t1.pop(&ui);
+        t0.pop(&ui);
+        clicked
+    }
+}
+
+
+pub struct Lamp<'a> {
+    position: Position,
+    frame_size: FrameSize,
+    off_color: Color4,
+    on_color: Color4,
+    border_color: Color4,
+    border_size: f32,
+    border_rounding: f32,
+    label_color: Color4,
+    label_text: &'a ImStr
+}
+
+impl Default for Lamp<'_> {
+    fn default<'a>() -> Self {
+        let label_text = im_str!("");
+        Lamp {
+            position: [0.0, 0.0],
+            frame_size: [50.0, 50.0],
+            off_color: RED_COLOR, 
+            on_color: GREEN_COLOR,
+            border_color: GRAY_COLOR,
+            border_size: 6.0,
+            border_rounding: 1.0,
+            label_color: BLACK_COLOR,
+            label_text
+        }
+    }
+}
+
+impl Lamp<'_> {
+    fn build(&self, ui: &Ui, intensity: f32) {
+        let t0 = ui.push_style_vars(&[
+            StyleVar::FrameRounding(self.border_rounding),
+            StyleVar::FrameBorderSize(self.border_size)
+        ]);
+
+        // Compute the lamp intensity
+        let mut color = self.off_color.clone();
+        for t in color.iter_mut().zip(self.on_color.iter()) {
+            let (c, on) = t;
+            *c += (*on - *c)*intensity;
+        }
+
         let t1 = ui.push_style_colors(&[
             (StyleColor::Text, self.label_color),
             (StyleColor::Border, self.border_color),
@@ -212,11 +278,10 @@ impl Button<'_> {
         ]);
 
         ui.set_cursor_pos(self.position);
-        let clicked = ui.button(self.label_text, self.frame_size);
+        let _ = ui.button(self.label_text, self.frame_size);
         
         t1.pop(&ui);
         t0.pop(&ui);
-        clicked
     }
 }
 
@@ -246,22 +311,40 @@ fn main() {
     let b2 = Button {
         position: [230.0, 230.0],
         frame_size: [40.0, 40.0],
-        off_color: GREEN_COLOR, 
-        on_color: RED_COLOR,
-        label_text: im_str!("Me Too!"),
+        off_color: AMBER_DARK               , 
+        on_color: AMBER_COLOR,
+        label_text: im_str!("Me\nToo!"),
         ..Default::default()
     };
 
     let b3 = Button {
         position: [390.0, 390.0],
         frame_size: [60.0, 60.0],
-        off_color: RED_COLOR, 
-        on_color: GREEN_COLOR,
+        off_color: RED_DARK, 
+        on_color: RED_COLOR,
         label_text: im_str!("DIGITAL\nPLOTTER"),
         ..Default::default()
     };
 
-    system.main_loop(|run, ui| {
+    let l1 = Lamp {
+        position: [390.0, 50.0],
+        frame_size: [60.0, 40.0],
+        off_color: AMBER_DARK, 
+        on_color: AMBER_COLOR,
+        label_text: im_str!("BUSY"),
+        ..Default::default()
+    };
+
+    let l2 = Lamp {
+        position: [390.0, 210.0],
+        frame_size: [60.0, 40.0],
+        off_color: GREEN_DARK, 
+        on_color: GREEN_COLOR,
+        label_text: im_str!("TRANSFER"),
+        ..Default::default()
+    };
+
+    system.main_loop(|_run, ui| {
 
         //let mut metrics_open = false;
 
@@ -288,6 +371,7 @@ fn main() {
             let clock = ui.time();
             let phase = (clock.fract()*2.0) as i64;
             let angle = ((clock*6.0)%360.0).to_radians();
+            let intensity = (clock/4.0).fract() as f32;
             
             // Build the Click Me button and its click handler
             if b1.build(&ui, false) {
@@ -295,7 +379,8 @@ fn main() {
             }
 
             // Build the Me Too! button and its click handler
-            if b2.build(&ui, true) {
+            if b2.build(&ui, !state.three_state) {
+                state.three_state = !state.three_state;
                 println!("Me too! clicked...");
             }
 
@@ -305,16 +390,22 @@ fn main() {
                 println!("Me Three clicked... state={}", state.three_state);
             }
 
+            // Build the BUSY and TRANSFER lamps
+            l1.build(&ui, intensity);
+            l2.build(&ui, 1.0-intensity);
+
             // Define the blinking circle
-            let (x, y) = angle.sin_cos();
-            let x = x as f32*125.0 + 250.0;
-            let y = 250.0 - y as f32*125.0;
-            let draw_list = ui.get_window_draw_list();
-            draw_list.add_circle([x, y], 8.0, if phase==0 {GREEN_COLOR} else {RED_COLOR})
-                     .filled(true)
-                     .num_segments(16)
-                     .thickness(1.0)
-                     .build();
+            if phase > 0 {
+                let (x, y) = angle.sin_cos();
+                let x = x as f32*125.0 + 250.0;
+                let y = 250.0 - y as f32*125.0;
+                let draw_list = ui.get_window_draw_list();
+                draw_list.add_circle([x, y], 8.0, if phase==0 {GREEN_COLOR} else {RED_COLOR})
+                        .filled(true)
+                        .num_segments(16)
+                        .thickness(1.0)
+                        .build();
+            }
         });
 
         // Pop the window background and font tokens
