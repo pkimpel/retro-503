@@ -39,7 +39,7 @@ impl System {
         let context = glutin::ContextBuilder::new().with_vsync(true);
         let builder = glutin::WindowBuilder::new()
             .with_title(title.to_owned())
-            .with_dimensions(glutin::dpi::LogicalSize::new(512f64, 512f64));
+            .with_dimensions(glutin::dpi::LogicalSize::new(660f64, 340f64));
 
         // Create the Display object to drive OpenGL    
         let display = Display::new(builder, context, &events_loop)
@@ -145,7 +145,7 @@ impl System {
 
             // Render the frame and swap buffers to display it
             let mut target = display.draw();
-            target.clear_color_srgb(1.0, 1.0, 1.0, 1.0);
+            target.clear_color_srgb(0.0, 0.0, 0.0, 1.0);
             platform.prepare_render(&ui, &window);
             let draw_data = ui.render();
             renderer.render(&mut target, draw_data)
@@ -166,12 +166,15 @@ static RED_COLOR: Color4 = [1.0, 0.0, 0.0, 1.0];
 static GREEN_DARK: Color4 = [0.0, 0.6, 0.0, 1.0];
 static GREEN_COLOR: Color4 = [0.0, 1.0, 0.0, 1.0];
 static BLACK_COLOR: Color4 = [0.0, 0.0, 0.0, 1.0];
+static GRAY_DARK: Color4 = [0.25, 0.25, 0.25, 1.0];
 static GRAY_COLOR: Color4 = [0.5, 0.5, 0.5, 1.0];
+static GRAY_LIGHT: Color4 = [0.75, 0.75, 0.75, 1.0];
 static AMBER_COLOR: Color4 = [1.0, 0.494, 0.0, 1.0];
 static AMBER_DARK: Color4 = [0.6, 0.296, 0.0, 1.0];
 
 
 pub struct Button<'a> {
+    is_active: bool,
     position: Position,
     frame_size: FrameSize,
     off_color: Color4,
@@ -187,6 +190,7 @@ impl Default for Button<'_> {
     fn default<'a>() -> Self {
         let label_text = im_str!("");
         Button {
+            is_active: false,
             position: [0.0, 0.0],
             frame_size: [50.0, 50.0],
             off_color: GREEN_COLOR, 
@@ -201,7 +205,7 @@ impl Default for Button<'_> {
 }
 
 impl Button<'_> {
-    fn build(&self, ui: &Ui, state: bool) -> bool {
+    fn build(&mut self, ui: &Ui, state: bool) -> bool {
         let t0 = ui.push_style_vars(&[
             StyleVar::FrameRounding(self.border_rounding),
             StyleVar::FrameBorderSize(self.border_size)
@@ -210,7 +214,7 @@ impl Button<'_> {
         let color = &if state {self.on_color} else {self.off_color};
         let t1 = ui.push_style_colors(&[
             (StyleColor::Text, self.label_color),
-            (StyleColor::Border, self.border_color),
+            (StyleColor::Border, if self.is_active {GRAY_DARK} else {self.border_color}),
             (StyleColor::Button, *color),
             (StyleColor::ButtonActive, *color),
             (StyleColor::ButtonHovered, *color)
@@ -218,6 +222,7 @@ impl Button<'_> {
 
         ui.set_cursor_pos(self.position);
         let clicked = ui.button(self.label_text, self.frame_size);
+        self.is_active = ui.is_item_active();
         
         t1.pop(&ui);
         t0.pop(&ui);
@@ -287,47 +292,62 @@ impl Lamp<'_> {
 
 
 pub struct State {
-    three_state: bool
+    power_on: bool,
+    busy_glow: f32,
+    no_protn: bool,
+    digital_plotter_manual: bool,
+    transfer_glow: f32,
+    air_cond: bool,
+    error_state: bool,
+    tag_glow: f32,
+    type_hold_glow: f32,
+    manual_state: bool,
+    reset_state: bool,
+    backing_store_parity: bool
 }
 
 
 fn main() {
     let mut state = State {
-        three_state: false
+        power_on: false,
+        busy_glow: 0.0,
+        no_protn: false,
+        digital_plotter_manual: false,
+        transfer_glow: 0.0,
+        air_cond: false,
+        error_state: false,
+        tag_glow: 0.0,
+        type_hold_glow: 0.0,
+        manual_state: false,
+        reset_state: false,
+        backing_store_parity: false
     };
 
+    // Instantiate the System infrastructure and default font
     let system = System::new(file!());
     let alt_font = system.alt_font;
 
-    let b1 = Button {
-        position: [50.0, 50.0],
-        frame_size: [60.0, 40.0],
-        off_color: RED_COLOR, 
-        on_color: GREEN_COLOR,
-        label_text: im_str!("Click Me"),
-        ..Default::default()
-    };
-
-    let b2 = Button {
-        position: [230.0, 230.0],
-        frame_size: [40.0, 40.0],
-        off_color: AMBER_DARK               , 
-        on_color: AMBER_COLOR,
-        label_text: im_str!("Me\nToo!"),
-        ..Default::default()
-    };
-
-    let b3 = Button {
-        position: [390.0, 390.0],
+    // Define the panel widgets -- top row
+    let mut off_btn = Button {
+        position: [20.0, 40.0],
         frame_size: [60.0, 60.0],
         off_color: RED_DARK, 
         on_color: RED_COLOR,
-        label_text: im_str!("DIGITAL\nPLOTTER"),
+        label_text: im_str!("OFF"),
         ..Default::default()
     };
 
-    let l1 = Lamp {
-        position: [390.0, 50.0],
+    let mut on_btn = Button {
+        position: [100.0, 40.0],
+        frame_size: [60.0, 60.0],
+        off_color: GREEN_DARK, 
+        on_color: GREEN_COLOR,
+        label_text: im_str!("ON"),
+        ..Default::default()
+    };
+
+    let busy_lamp = Lamp {
+        position: [180.0, 40.0],
         frame_size: [60.0, 40.0],
         off_color: AMBER_DARK, 
         on_color: AMBER_COLOR,
@@ -335,8 +355,46 @@ fn main() {
         ..Default::default()
     };
 
-    let l2 = Lamp {
-        position: [390.0, 210.0],
+    let mut initial_instructions_btn = Button {
+        position: [260.0, 40.0],
+        frame_size: [60.0, 60.0],
+        off_color: GRAY_LIGHT, 
+        on_color: GRAY_LIGHT,
+        label_text: im_str!("INITIAL\nINSTRUC\nTIONS"),
+        ..Default::default()
+    };
+
+    let mut no_protn_btn = Button {
+        position: [340.0, 40.0],
+        frame_size: [60.0, 60.0],
+        off_color: GREEN_DARK, 
+        on_color: GREEN_COLOR,
+        label_text: im_str!("NO\nPROTN"),
+        ..Default::default()
+    };
+
+    let mut clear_btn = Button {
+        position: [420.0, 40.0],
+        frame_size: [60.0, 60.0],
+        off_color: GRAY_LIGHT, 
+        on_color: GRAY_LIGHT,
+        label_text: im_str!("CLEAR"),
+        ..Default::default()
+    };
+
+    let mut plotter_manual_btn = Button {
+        position: [540.0, 40.0],
+        frame_size: [60.0, 60.0],
+        off_color: RED_DARK, 
+        on_color: RED_COLOR,
+        label_text: im_str!("DIGITAL\nPLOTTER\nMANUAL"),
+        ..Default::default()
+    };
+
+    // Define the panel widgets -- middle row
+
+    let transfer_lamp = Lamp {
+        position: [180.0, 140.0],
         frame_size: [60.0, 40.0],
         off_color: GREEN_DARK, 
         on_color: GREEN_COLOR,
@@ -344,12 +402,75 @@ fn main() {
         ..Default::default()
     };
 
+    // Define the panel widgets -- bottom row
+    let air_condition_lamp = Lamp {
+        position: [20.0, 220.0],
+        frame_size: [60.0, 40.0],
+        off_color: RED_DARK, 
+        on_color: RED_COLOR,
+        label_text: im_str!("AIR\nCONDITION"),
+        ..Default::default()
+    };
+
+    let error_lamp = Lamp {
+        position: [100.0, 220.0],
+        frame_size: [60.0, 40.0],
+        off_color: RED_DARK, 
+        on_color: RED_COLOR,
+        label_text: im_str!("ERROR"),
+        ..Default::default()
+    };
+
+    let tag_lamp = Lamp {
+        position: [180.0, 220.0],
+        frame_size: [60.0, 40.0],
+        off_color: AMBER_DARK, 
+        on_color: AMBER_COLOR,
+        label_text: im_str!("TAG"),
+        ..Default::default()
+    };
+
+    let type_hold_lamp = Lamp {
+        position: [260.0, 220.0],
+        frame_size: [60.0, 40.0],
+        off_color: AMBER_DARK, 
+        on_color: AMBER_COLOR,
+        label_text: im_str!("TYPE\nHOLD"),
+        ..Default::default()
+    };
+
+    let mut manual_btn = Button {
+        position: [340.0, 200.0],
+        frame_size: [60.0, 60.0],
+        off_color: RED_DARK, 
+        on_color: RED_COLOR,
+        label_text: im_str!("MANUAL"),
+        ..Default::default()
+    };
+
+    let mut reset_btn = Button {
+        position: [420.0, 200.0],
+        frame_size: [60.0, 60.0],
+        off_color: GREEN_DARK, 
+        on_color: GREEN_COLOR,
+        label_text: im_str!("RESET"),
+        ..Default::default()
+    };
+
+    let backing_store_lamp = Lamp {
+        position: [540.0, 220.0],
+        frame_size: [60.0, 40.0],
+        off_color: RED_DARK, 
+        on_color: RED_COLOR,
+        label_text: im_str!("BACKING\nSTORE\nPARITY"),
+        ..Default::default()
+    };
+
+    // Start the System event loop
     system.main_loop(|_run, ui| {
 
-        //let mut metrics_open = false;
-
         // Set the current font and OS-level window background color
-        let _alt_font = ui.push_font(alt_font);
+        let our_font = ui.push_font(alt_font);
         let tw = ui.push_style_color(StyleColor::WindowBg, BG_COLOR);
         let ts = ui.push_style_var(StyleVar::WindowRounding(0.0));
 
@@ -361,57 +482,119 @@ fn main() {
             .menu_bar(false)
             .title_bar(false)
             .scrollable(false)
-            .position([6.0, 6.0], Condition::FirstUseEver)
-            .size([500.0, 500.0], Condition::FirstUseEver);
+            .position([20.0, 20.0], Condition::FirstUseEver)
+            .size([620.0, 300.0], Condition::FirstUseEver);
         //window = window.opened(run);    // Enable clicking of the window-close icon
 
         // Build our UI window and its inner widgets in the closure
         window.build(ui, || {
             let frames = ui.frame_count();
             let clock = ui.time();
-            let phase = (clock.fract()*2.0) as i64;
+            let ticks = clock.fract() as f32;
+            let phase = (ticks*2.0) as i32;
             let angle = ((clock*6.0)%360.0).to_radians();
-            let intensity = (clock/4.0).fract() as f32;
-            
-            // Build the Click Me button and its click handler
-            if b1.build(&ui, false) {
-                println!("Click Me clicked... frames={}, time={}, fps={}", frames, clock, frames as f64/clock);
-            }
+            let draw_list = ui.get_window_draw_list();
 
-            // Build the Me Too! button and its click handler
-            if b2.build(&ui, !state.three_state) {
-                state.three_state = !state.three_state;
-                println!("Me too! clicked...");
+            if state.power_on {
+                state.busy_glow = state.busy_glow*0.99 + (ticks*20.0).fract()*0.01;
+                state.transfer_glow = state.transfer_glow*0.70 + (ticks*3.0).fract()*0.30;
+                state.tag_glow = state.tag_glow*0.70 + (ticks*1.75).fract()*0.30;
+                state.type_hold_glow = state.type_hold_glow*0.50 + (ticks*0.3).fract()*0.50;
+            } else {
+                state.busy_glow = 0.0;
+                state.transfer_glow = 0.0;
+                state.tag_glow = 0.0;
+                state.type_hold_glow = 0.0;
             }
-
-            // Build the Me Three button and its click handler
-            if b3.build(&ui, state.three_state) {
-                state.three_state = !state.three_state;
-                println!("Me Three clicked... state={}", state.three_state);
-            }
-
-            // Build the BUSY and TRANSFER lamps
-            l1.build(&ui, intensity);
-            l2.build(&ui, 1.0-intensity);
 
             // Define the blinking circle
-            if phase > 0 {
+            if state.power_on && phase > 0 {
                 let (x, y) = angle.sin_cos();
-                let x = x as f32*125.0 + 250.0;
-                let y = 250.0 - y as f32*125.0;
-                let draw_list = ui.get_window_draw_list();
+                let x = (270.0 + x*125.0) as f32;
+                let y = (170.0 - y*125.0) as f32;
                 draw_list.add_circle([x, y], 8.0, if phase==0 {GREEN_COLOR} else {RED_COLOR})
-                        .filled(true)
-                        .num_segments(16)
-                        .thickness(1.0)
-                        .build();
+                         .filled(true)
+                         .num_segments(16)
+                         .thickness(1.0)
+                         .build();
             }
+            
+            if off_btn.build(&ui, !state.power_on) && state.power_on {
+                println!("Power Off... frames={}, time={}, fps={}", frames, clock, frames as f64/clock);
+                state.power_on = false;
+                // Do the power off
+                state.no_protn = false;
+                state.digital_plotter_manual = false;
+                state.manual_state = false;
+                state.reset_state = false;
+            }
+            
+            if on_btn.build(&ui, state.power_on) & !state.power_on {
+                println!("Power On... frames={}, time={}, fps={}", frames, clock, frames as f64/clock);
+                state.power_on = true;
+                // Do the power on
+            }
+
+            busy_lamp.build(&ui, state.busy_glow);
+
+            if initial_instructions_btn.build(&ui, true) && state.power_on {
+                println!("Initial Instructions...");
+                // Initiate initial instructions program
+            }
+
+            if no_protn_btn.build(&ui, state.no_protn) && state.power_on {
+                println!("No Protection");
+                state.no_protn = !state.no_protn;
+                // Switch the protection state
+            }
+
+            if clear_btn.build(&ui, true) && state.power_on {
+                println!("Clear");
+                // Clear the system state
+            }
+
+            if plotter_manual_btn.build(&ui, state.digital_plotter_manual) && state.power_on {
+                println!("Digital Plotter Manual");
+                state.digital_plotter_manual = !state.digital_plotter_manual;
+                // Change digital plotter state
+            }
+
+            transfer_lamp.build(&ui, state.transfer_glow);
+
+            air_condition_lamp.build(&ui, if state.air_cond {1.0} else {0.0});
+
+            error_lamp.build(&ui, if state.error_state {1.0} else {0.0});
+
+            tag_lamp.build(&ui, state.tag_glow);
+
+            type_hold_lamp.build(&ui, state.type_hold_glow);
+
+            if manual_btn.build(&ui, state.manual_state) && state.power_on {
+                println!("Manual...");
+                state.manual_state = !state.manual_state;
+                // Change global manual peripheral state
+            }
+
+            if reset_btn.build(&ui, state.reset_state) && state.power_on {
+                println!("Reset...");
+                state.reset_state = true;
+            } else {
+                state.reset_state = false;
+            }
+
+            backing_store_lamp.build(&ui, if state.backing_store_parity {1.0} else {0.0});
+
+            // Draw the panel divider bar
+            draw_list.add_rect([520.0, 20.0], [540.0, 320.0], BLACK_COLOR)
+                     .filled(true)
+                     .thickness(1.0)
+                     .build();
         });
 
         // Pop the window background and font tokens
         ts.pop(&ui);
         tw.pop(&ui);
-        _alt_font.pop(&ui);       // revert to default font
+        our_font.pop(&ui);       // revert to default font
 
         // Display the ImGui metrics window (debug)
         //ui.show_metrics_window(&mut metrics_open);
