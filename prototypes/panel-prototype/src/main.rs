@@ -160,7 +160,7 @@ pub type Position = [f32; 2];
 pub type FrameSize = [f32; 2];
 pub type Color4 = [f32; 4];
 
-static BG_COLOR: Color4 = [0.85490, 0.83922, 0.79608, 1.0];    // Putty
+static BG_COLOR: Color4 = [0.85490, 0.83922, 0.79608, 1.0];      // Putty
 static RED_DARK: Color4 = [0.6, 0.0, 0.0, 1.0];
 static RED_COLOR: Color4 = [1.0, 0.0, 0.0, 1.0];
 static GREEN_DARK: Color4 = [0.0, 0.6, 0.0, 1.0];
@@ -174,11 +174,11 @@ static AMBER_DARK: Color4 = [0.6, 0.296, 0.0, 1.0];
 
 
 pub struct Button<'a> {
-    is_active: bool,
     position: Position,
     frame_size: FrameSize,
     off_color: Color4,
     on_color: Color4,
+    active_color: Color4,
     border_color: Color4,
     border_size: f32,
     border_rounding: f32,
@@ -190,11 +190,11 @@ impl Default for Button<'_> {
     fn default<'a>() -> Self {
         let label_text = im_str!("");
         Button {
-            is_active: false,
             position: [0.0, 0.0],
             frame_size: [50.0, 50.0],
             off_color: GREEN_COLOR, 
             on_color: GREEN_COLOR,
+            active_color: GRAY_DARK,
             border_color: GRAY_COLOR,
             border_size: 6.0,
             border_rounding: 1.0,
@@ -205,7 +205,7 @@ impl Default for Button<'_> {
 }
 
 impl Button<'_> {
-    fn build(&mut self, ui: &Ui, state: bool) -> bool {
+    fn build(&self, ui: &Ui, state: bool) -> bool {
         let t0 = ui.push_style_vars(&[
             StyleVar::FrameRounding(self.border_rounding),
             StyleVar::FrameBorderSize(self.border_size)
@@ -214,15 +214,14 @@ impl Button<'_> {
         let color = &if state {self.on_color} else {self.off_color};
         let t1 = ui.push_style_colors(&[
             (StyleColor::Text, self.label_color),
-            (StyleColor::Border, if self.is_active {GRAY_DARK} else {self.border_color}),
+            (StyleColor::Border, self.border_color),
             (StyleColor::Button, *color),
-            (StyleColor::ButtonActive, *color),
-            (StyleColor::ButtonHovered, *color)
+            (StyleColor::ButtonHovered, *color),
+            (StyleColor::ButtonActive, self.active_color)
         ]);
 
         ui.set_cursor_pos(self.position);
         let clicked = ui.button(self.label_text, self.frame_size);
-        self.is_active = ui.is_item_active();
         
         t1.pop(&ui);
         t0.pop(&ui);
@@ -328,7 +327,7 @@ fn main() {
     let alt_font = system.alt_font;
 
     // Define the panel widgets -- top row
-    let mut off_btn = Button {
+    let off_btn = Button {
         position: [20.0, 40.0],
         frame_size: [60.0, 60.0],
         off_color: RED_DARK, 
@@ -337,7 +336,7 @@ fn main() {
         ..Default::default()
     };
 
-    let mut on_btn = Button {
+    let on_btn = Button {
         position: [100.0, 40.0],
         frame_size: [60.0, 60.0],
         off_color: GREEN_DARK, 
@@ -355,7 +354,7 @@ fn main() {
         ..Default::default()
     };
 
-    let mut initial_instructions_btn = Button {
+    let initial_instructions_btn = Button {
         position: [260.0, 40.0],
         frame_size: [60.0, 60.0],
         off_color: GRAY_LIGHT, 
@@ -364,7 +363,7 @@ fn main() {
         ..Default::default()
     };
 
-    let mut no_protn_btn = Button {
+    let no_protn_btn = Button {
         position: [340.0, 40.0],
         frame_size: [60.0, 60.0],
         off_color: GREEN_DARK, 
@@ -373,7 +372,7 @@ fn main() {
         ..Default::default()
     };
 
-    let mut clear_btn = Button {
+    let clear_btn = Button {
         position: [420.0, 40.0],
         frame_size: [60.0, 60.0],
         off_color: GRAY_LIGHT, 
@@ -382,8 +381,8 @@ fn main() {
         ..Default::default()
     };
 
-    let mut plotter_manual_btn = Button {
-        position: [540.0, 40.0],
+    let plotter_manual_btn = Button {
+        position: [20.0, 40.0],
         frame_size: [60.0, 60.0],
         off_color: RED_DARK, 
         on_color: RED_COLOR,
@@ -439,7 +438,7 @@ fn main() {
         ..Default::default()
     };
 
-    let mut manual_btn = Button {
+    let manual_btn = Button {
         position: [340.0, 200.0],
         frame_size: [60.0, 60.0],
         off_color: RED_DARK, 
@@ -448,7 +447,7 @@ fn main() {
         ..Default::default()
     };
 
-    let mut reset_btn = Button {
+    let reset_btn = Button {
         position: [420.0, 200.0],
         frame_size: [60.0, 60.0],
         off_color: GREEN_DARK, 
@@ -458,7 +457,7 @@ fn main() {
     };
 
     let backing_store_lamp = Lamp {
-        position: [540.0, 220.0],
+        position: [20.0, 220.0],
         frame_size: [60.0, 40.0],
         off_color: RED_DARK, 
         on_color: RED_COLOR,
@@ -474,8 +473,8 @@ fn main() {
         let tw = ui.push_style_color(StyleColor::WindowBg, BG_COLOR);
         let ts = ui.push_style_var(StyleVar::WindowRounding(0.0));
 
-        // Create our UI window
-        let window = Window::new(im_str!("UI One"))
+        // Create the Panel A window
+        let panel_a = Window::new(im_str!("Panel A"))
             .resizable(false)
             .scroll_bar(false)
             .collapsible(false)
@@ -483,23 +482,23 @@ fn main() {
             .title_bar(false)
             .scrollable(false)
             .position([20.0, 20.0], Condition::FirstUseEver)
-            .size([620.0, 300.0], Condition::FirstUseEver);
-        //window = window.opened(run);    // Enable clicking of the window-close icon
+            .size([500.0, 300.0], Condition::FirstUseEver);
+        //panel_a = panel_a.opened(run);      // Enable clicking of the window-close icon
 
-        // Build our UI window and its inner widgets in the closure
-        window.build(ui, || {
+        // Build our Panel A window and its inner widgets in the closure
+        panel_a.build(&ui, || {
             let frames = ui.frame_count();
             let clock = ui.time();
-            let ticks = clock.fract() as f32;
-            let phase = (ticks*2.0) as i32;
+            let ticks = (clock.fract()*10.0) as f32;
+            let phase = (clock.fract()*2.0) as i32;
             let angle = ((clock*6.0)%360.0).to_radians();
             let draw_list = ui.get_window_draw_list();
 
             if state.power_on {
-                state.busy_glow = state.busy_glow*0.99 + (ticks*20.0).fract()*0.01;
-                state.transfer_glow = state.transfer_glow*0.70 + (ticks*3.0).fract()*0.30;
-                state.tag_glow = state.tag_glow*0.70 + (ticks*1.75).fract()*0.30;
-                state.type_hold_glow = state.type_hold_glow*0.50 + (ticks*0.3).fract()*0.50;
+                state.busy_glow = state.busy_glow*0.99 + (ticks*2.0).fract()*0.01;
+                state.transfer_glow = state.transfer_glow*0.70 + (ticks*0.2).fract()*0.30;
+                state.tag_glow = state.tag_glow*0.70 + (ticks*0.75).fract()*0.30;
+                state.type_hold_glow = state.type_hold_glow*0.1 + (ticks*0.03).fract()*0.9;
             } else {
                 state.busy_glow = 0.0;
                 state.transfer_glow = 0.0;
@@ -553,12 +552,6 @@ fn main() {
                 // Clear the system state
             }
 
-            if plotter_manual_btn.build(&ui, state.digital_plotter_manual) && state.power_on {
-                println!("Digital Plotter Manual");
-                state.digital_plotter_manual = !state.digital_plotter_manual;
-                // Change digital plotter state
-            }
-
             transfer_lamp.build(&ui, state.transfer_glow);
 
             air_condition_lamp.build(&ui, if state.air_cond {1.0} else {0.0});
@@ -582,15 +575,35 @@ fn main() {
                 state.reset_state = false;
             }
 
-            backing_store_lamp.build(&ui, if state.backing_store_parity {1.0} else {0.0});
-
-            // Draw the panel divider bar
-            draw_list.add_rect([520.0, 20.0], [540.0, 320.0], BLACK_COLOR)
-                     .filled(true)
-                     .thickness(1.0)
-                     .build();
+            // // Draw the panel divider bar
+            // draw_list.add_rect([520.0, 20.0], [540.0, 320.0], BLACK_COLOR)
+            //          .filled(true)
+            //          .thickness(1.0)
+            //          .build();
         });
 
+        // Create the Panel B window
+        let panel_b = Window::new(im_str!("Panel B"))
+            .resizable(false)
+            .scroll_bar(false)
+            .collapsible(false)
+            .menu_bar(false)
+            .title_bar(false)
+            .scrollable(false)
+            .position([540.0, 20.0], Condition::FirstUseEver)
+            .size([100.0, 300.0], Condition::FirstUseEver);
+        //panelB = panelB.opened(run);    // Enable clicking of the window-close icon
+
+        // Build our Panel B window and its inner widgets in the closure
+        panel_b.build(&ui, || {
+            if plotter_manual_btn.build(&ui, state.digital_plotter_manual) && state.power_on {
+                println!("Digital Plotter Manual");
+                state.digital_plotter_manual = !state.digital_plotter_manual;
+                // Change digital plotter state
+            }
+
+            backing_store_lamp.build(&ui, if state.backing_store_parity {1.0} else {0.0});
+        });
         // Pop the window background and font tokens
         ts.pop(&ui);
         tw.pop(&ui);
