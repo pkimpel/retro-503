@@ -8,301 +8,32 @@
  *     Original version, from ui_one prototype.
  **********************************************************************/
 
-use glium::glutin::{self, Event, WindowEvent};
-use glium::{Display, Surface};
-use imgui::{Context, FontConfig, FontId, FontSource, FontGlyphRanges, Ui};
-use imgui::{im_str, ImStr, Condition, StyleColor, StyleVar, Window};
-use imgui_glium_renderer::Renderer;
-use imgui_winit_support::{HiDpiMode, WinitPlatform};
-use std::time::Instant;
+use chrono::{DateTime, Local, Timelike};
+use imgui::{im_str, Condition, StyleColor, StyleVar, Window};
 
-struct System {
-    pub events_loop: glutin::EventsLoop,
-    pub display: glium::Display,
-    pub imgui: Context,
-    pub platform: WinitPlatform,
-    pub renderer: Renderer,
-    pub font_size: f32,
-    pub alt_font: FontId
-}
+mod system_support;
+use system_support::{System};
 
-impl System {
-    pub fn new(title: &str) -> System {
-        // Strip off the last node of the program title
-        let title = match title.rfind('/') {
-            Some(idx) => title.split_at(idx+1).1,
-            None => title
-        };
+mod widgets;
+use widgets::*;
 
-        // Create the event loop, graphics context, and OS-level window
-        let events_loop = glutin::EventsLoop::new();
-        let context = glutin::ContextBuilder::new().with_vsync(true);
-        let builder = glutin::WindowBuilder::new()
-            .with_title(title.to_owned())
-            .with_dimensions(glutin::dpi::LogicalSize::new(660f64, 340f64));
-
-        // Create the Display object to drive OpenGL    
-        let display = Display::new(builder, context, &events_loop)
-                              .expect("Failed to initialize display");
-        
-        // Create and initialize the ImGui context
-        let mut imgui = Context::create();
-        imgui.set_ini_filename(None);
-
-        // Initialize the OS-level window platform and attach out display object
-        let mut platform = WinitPlatform::init(&mut imgui);
-        {
-            let glw = display.gl_window();
-            let window = glw.window();
-            platform.attach_window(imgui.io_mut(), &window, HiDpiMode::Rounded);
-        }
-
-        // Get the DPI factor from Winit
-        let hidpi_factor = platform.hidpi_factor();
-
-        // Define the fonts and scale them to the DPI factor
-        let font_size = (12.0*hidpi_factor) as f32;
-        imgui.fonts().add_font(&[
-            FontSource::DefaultFontData {   // built-in font
-                config: Some(FontConfig {
-                    size_pixels: font_size,
-                    ..FontConfig::default()
-                }),
-            }
-        ]);
-        let alt_font = imgui.fonts().add_font(&[
-            FontSource::TtfData {           // Roboto Regular
-                data: include_bytes!("../resources/Roboto-Regular.ttf"),
-                size_pixels: font_size,
-                config: Some(FontConfig {
-                    rasterizer_multiply: 1.75,
-                    glyph_ranges: FontGlyphRanges::default(),
-                    ..FontConfig::default()
-                }),
-            }
-        ]);
-
-        imgui.io_mut().font_global_scale = (1.0/hidpi_factor) as f32;
-
-        // Initialize and attach the glium/OpenGL renderer
-        let renderer = Renderer::init(&mut imgui, &display).expect("Failed to initalize renderer");
-
-        // Return the new System instance with the objects just initialized
-        System {
-            events_loop,
-            display,
-            imgui,
-            platform,
-            renderer,
-            font_size,
-            alt_font
-        }
-    }
-
-    pub fn main_loop<F: FnMut(&mut bool, &mut Ui)> (self, mut run_ui: F) {
-        // Fetch local references to System member fields
-        let System {
-            mut events_loop,
-            display,
-            mut imgui,
-            mut platform,
-            mut renderer,
-            ..
-        } = self;
-
-        // Fetch the window object
-        let glw = display.gl_window();
-        let window = glw.window();
-
-        // Initialize the frame-rate timer
-        let mut last_frame = Instant::now();
-
-        // Initialize the keep-running flag
-        let mut run = true;
-
-        while run {
-            // Fetch the next group of events and process them in the closure
-            events_loop.poll_events(|event| {
-                platform.handle_event(imgui.io_mut(), &window, &event);
-
-                // Check if the window was closed
-                if let Event::WindowEvent {event, ..} = event {
-                    if let WindowEvent::CloseRequested = event {
-                        run = false;
-                    }
-                }
-            });
-
-            // Prepare to generate the next frame
-            let io = imgui.io_mut();
-            platform.prepare_frame(io, &window)
-                    .expect("Failed to start frame");
-            last_frame = io.update_delta_time(last_frame);
-
-            // Fetch the ImGui Ui instance and call the main_loop closure to draw the UI
-            let mut ui = imgui.frame();
-            run_ui(&mut run, &mut ui);
-
-            // Render the frame and swap buffers to display it
-            let mut target = display.draw();
-            target.clear_color_srgb(0.0, 0.0, 0.0, 1.0);
-            platform.prepare_render(&ui, &window);
-            let draw_data = ui.render();
-            renderer.render(&mut target, draw_data)
-                    .expect("Rendering failed");
-            target.finish().expect("Failed to swap buffers");
-        } // end while run
-    }
-} // System impl
-
-
-pub type Position = [f32; 2];
-pub type FrameSize = [f32; 2];
-pub type Color4 = [f32; 4];
-
-static BG_COLOR: Color4 = [0.85490, 0.83922, 0.79608, 1.0];      // Putty
-static RED_DARK: Color4 = [0.6, 0.0, 0.0, 1.0];
-static RED_COLOR: Color4 = [1.0, 0.0, 0.0, 1.0];
-static GREEN_DARK: Color4 = [0.0, 0.6, 0.0, 1.0];
-static GREEN_COLOR: Color4 = [0.0, 1.0, 0.0, 1.0];
-static BLACK_COLOR: Color4 = [0.0, 0.0, 0.0, 1.0];
-static GRAY_DARK: Color4 = [0.25, 0.25, 0.25, 1.0];
-static GRAY_COLOR: Color4 = [0.5, 0.5, 0.5, 1.0];
-static GRAY_LIGHT: Color4 = [0.75, 0.75, 0.75, 1.0];
-static AMBER_COLOR: Color4 = [1.0, 0.494, 0.0, 1.0];
-static AMBER_DARK: Color4 = [0.6, 0.296, 0.0, 1.0];
-
-
-pub struct Button<'a> {
-    position: Position,
-    frame_size: FrameSize,
-    off_color: Color4,
-    on_color: Color4,
-    active_color: Color4,
-    border_color: Color4,
-    border_size: f32,
-    border_rounding: f32,
-    label_color: Color4,
-    label_text: &'a ImStr
-}
-
-impl Default for Button<'_> {
-    fn default<'a>() -> Self {
-        let label_text = im_str!("");
-        Button {
-            position: [0.0, 0.0],
-            frame_size: [50.0, 50.0],
-            off_color: GREEN_COLOR, 
-            on_color: GREEN_COLOR,
-            active_color: GRAY_DARK,
-            border_color: GRAY_COLOR,
-            border_size: 6.0,
-            border_rounding: 1.0,
-            label_color: BLACK_COLOR,
-            label_text
-        }
-    }
-}
-
-impl Button<'_> {
-    fn build(&self, ui: &Ui, state: bool) -> bool {
-        let t0 = ui.push_style_vars(&[
-            StyleVar::FrameRounding(self.border_rounding),
-            StyleVar::FrameBorderSize(self.border_size)
-        ]);
-
-        let color = &if state {self.on_color} else {self.off_color};
-        let t1 = ui.push_style_colors(&[
-            (StyleColor::Text, self.label_color),
-            (StyleColor::Border, self.border_color),
-            (StyleColor::Button, *color),
-            (StyleColor::ButtonHovered, *color),
-            (StyleColor::ButtonActive, self.active_color)
-        ]);
-
-        ui.set_cursor_pos(self.position);
-        let clicked = ui.button(self.label_text, self.frame_size);
-        
-        t1.pop(&ui);
-        t0.pop(&ui);
-        clicked
-    }
-}
-
-
-pub struct Lamp<'a> {
-    position: Position,
-    frame_size: FrameSize,
-    off_color: Color4,
-    on_color: Color4,
-    border_color: Color4,
-    border_size: f32,
-    border_rounding: f32,
-    label_color: Color4,
-    label_text: &'a ImStr
-}
-
-impl Default for Lamp<'_> {
-    fn default<'a>() -> Self {
-        let label_text = im_str!("");
-        Lamp {
-            position: [0.0, 0.0],
-            frame_size: [50.0, 50.0],
-            off_color: RED_COLOR, 
-            on_color: GREEN_COLOR,
-            border_color: GRAY_COLOR,
-            border_size: 6.0,
-            border_rounding: 1.0,
-            label_color: BLACK_COLOR,
-            label_text
-        }
-    }
-}
-
-impl Lamp<'_> {
-    fn build(&self, ui: &Ui, intensity: f32) {
-        let t0 = ui.push_style_vars(&[
-            StyleVar::FrameRounding(self.border_rounding),
-            StyleVar::FrameBorderSize(self.border_size)
-        ]);
-
-        // Compute the lamp intensity
-        let mut color = self.off_color.clone();
-        for t in color.iter_mut().zip(self.on_color.iter()) {
-            let (c, on) = t;
-            *c += (*on - *c)*intensity;
-        }
-
-        let t1 = ui.push_style_colors(&[
-            (StyleColor::Text, self.label_color),
-            (StyleColor::Border, self.border_color),
-            (StyleColor::Button, color),
-            (StyleColor::ButtonActive, color),
-            (StyleColor::ButtonHovered, color)
-        ]);
-
-        ui.set_cursor_pos(self.position);
-        let _ = ui.button(self.label_text, self.frame_size);
-        
-        t1.pop(&ui);
-        t0.pop(&ui);
-    }
-}
+use widgets::button::Button;
+use widgets::lamp::Lamp;
 
 
 pub struct State {
-    power_on: bool,
-    busy_glow: f32,
-    no_protn: bool,
-    digital_plotter_manual: bool,
-    transfer_glow: f32,
-    air_cond: bool,
-    error_state: bool,
-    tag_glow: f32,
-    type_hold_glow: f32,
-    manual_state: bool,
-    reset_state: bool,
-    backing_store_parity: bool
+    pub power_on: bool,
+    pub busy_glow: f32,
+    pub no_protn: bool,
+    pub digital_plotter_manual: bool,
+    pub transfer_glow: f32,
+    pub air_cond: bool,
+    pub error_state: bool,
+    pub tag_glow: f32,
+    pub type_hold_glow: f32,
+    pub manual_state: bool,
+    pub reset_state: bool,
+    pub backing_store_parity: bool
 }
 
 
@@ -332,6 +63,7 @@ fn main() {
         frame_size: [60.0, 60.0],
         off_color: RED_DARK, 
         on_color: RED_COLOR,
+        active_color: RED_COLOR,
         label_text: im_str!("OFF"),
         ..Default::default()
     };
@@ -341,6 +73,7 @@ fn main() {
         frame_size: [60.0, 60.0],
         off_color: GREEN_DARK, 
         on_color: GREEN_COLOR,
+        active_color: GREEN_COLOR,
         label_text: im_str!("ON"),
         ..Default::default()
     };
@@ -359,6 +92,7 @@ fn main() {
         frame_size: [60.0, 60.0],
         off_color: GRAY_LIGHT, 
         on_color: GRAY_LIGHT,
+        active_color: GRAY_COLOR,
         label_text: im_str!("INITIAL\nINSTRUC\nTIONS"),
         ..Default::default()
     };
@@ -377,6 +111,7 @@ fn main() {
         frame_size: [60.0, 60.0],
         off_color: GRAY_LIGHT, 
         on_color: GRAY_LIGHT,
+        active_color: GRAY_COLOR,
         label_text: im_str!("CLEAR"),
         ..Default::default()
     };
@@ -489,16 +224,16 @@ fn main() {
         panel_a.build(&ui, || {
             let frames = ui.frame_count();
             let clock = ui.time();
-            let ticks = (clock.fract()*10.0) as f32;
-            let phase = (clock.fract()*2.0) as i32;
-            let angle = ((clock*6.0)%360.0).to_radians();
+            let ticks = clock.fract() as f32;
+            let phase = (ticks*2.0) as i32;
+            let angle = ((clock*24.0)%360.0).to_radians();
             let draw_list = ui.get_window_draw_list();
 
             if state.power_on {
-                state.busy_glow = state.busy_glow*0.99 + (ticks*2.0).fract()*0.01;
-                state.transfer_glow = state.transfer_glow*0.70 + (ticks*0.2).fract()*0.30;
-                state.tag_glow = state.tag_glow*0.70 + (ticks*0.75).fract()*0.30;
-                state.type_hold_glow = state.type_hold_glow*0.1 + (ticks*0.03).fract()*0.9;
+                state.busy_glow = state.busy_glow*0.84 + (ticks*2345.0).fract()*0.16;
+                state.transfer_glow = state.transfer_glow*0.84 + (ticks*3456.0).fract()*0.16;
+                state.tag_glow = state.tag_glow*0.84 + (ticks*4567.0).fract()*0.16;
+                state.type_hold_glow = state.type_hold_glow*0.84 + (ticks*7654.0).fract()*0.16;
             } else {
                 state.busy_glow = 0.0;
                 state.transfer_glow = 0.0;
@@ -509,9 +244,9 @@ fn main() {
             // Define the blinking circle
             if state.power_on && phase > 0 {
                 let (x, y) = angle.sin_cos();
-                let x = (270.0 + x*125.0) as f32;
-                let y = (170.0 - y*125.0) as f32;
-                draw_list.add_circle([x, y], 8.0, if phase==0 {GREEN_COLOR} else {RED_COLOR})
+                let x = (230.0 + x*100.0) as f32;
+                let y = (170.0 - y*100.0) as f32;
+                draw_list.add_circle([x, y], 8.0, RED_COLOR)
                          .filled(true)
                          .num_segments(16)
                          .thickness(1.0)
@@ -574,12 +309,6 @@ fn main() {
             } else {
                 state.reset_state = false;
             }
-
-            // // Draw the panel divider bar
-            // draw_list.add_rect([520.0, 20.0], [540.0, 320.0], BLACK_COLOR)
-            //          .filled(true)
-            //          .thickness(1.0)
-            //          .build();
         });
 
         // Create the Panel B window
@@ -592,10 +321,12 @@ fn main() {
             .scrollable(false)
             .position([540.0, 20.0], Condition::FirstUseEver)
             .size([100.0, 300.0], Condition::FirstUseEver);
-        //panelB = panelB.opened(run);    // Enable clicking of the window-close icon
+        //panel_b = panel_b.opened(run);    // Enable clicking of the window-close icon
 
         // Build our Panel B window and its inner widgets in the closure
         panel_b.build(&ui, || {
+            let draw_list = ui.get_window_draw_list();
+
             if plotter_manual_btn.build(&ui, state.digital_plotter_manual) && state.power_on {
                 println!("Digital Plotter Manual");
                 state.digital_plotter_manual = !state.digital_plotter_manual;
@@ -603,6 +334,62 @@ fn main() {
             }
 
             backing_store_lamp.build(&ui, if state.backing_store_parity {1.0} else {0.0});
+
+            // Build the simple clock
+            const CENTER_X: f32 = 590.0;
+            const CENTER_Y: f32 = 180.0;
+            const CENTER: [f32; 2] = [CENTER_X, CENTER_Y];
+
+            let stamp: DateTime<Local> = Local::now();
+            let hour = stamp.hour()%12;
+            let minute = stamp.minute();
+            let second = stamp.second();
+
+            draw_list.add_circle(CENTER, 42.0, GRAY_LIGHT)
+                     .num_segments(24)
+                     .thickness(2.0)
+                     .build();
+
+            for h in 0..12 {
+                let angle = (h as f32 / 12.0 * 360.0).to_radians();
+                let (x, y) = angle.sin_cos();
+                let x1 = CENTER_X + x*40.0;
+                let y1 = CENTER_Y - y*40.0;
+                let x2 = CENTER_X + x*42.0;
+                let y2 = CENTER_Y - y*42.0;
+                draw_list.add_line([x1, y1], [x2, y2], BLACK_COLOR)
+                         .thickness(2.0)
+                         .build();
+            }
+            
+            let angle = (((hour*60 + minute)*60 + second) as f32 / 43200.0 * 360.0).to_radians();
+            let (x, y) = angle.sin_cos();
+            let x = CENTER_X + x*25.0;
+            let y = CENTER_Y - y*25.0;
+            draw_list.add_line(CENTER, [x, y], GRAY_DARK)
+                     .thickness(3.0)
+                     .build();
+            
+            let angle = ((minute*60 + second) as f32 / 3600.0 * 360.0).to_radians();
+            let (x, y) = angle.sin_cos();
+            let x = CENTER_X + x*35.0;
+            let y = CENTER_Y - y*35.0;
+            draw_list.add_line(CENTER, [x, y], GRAY_DARK)
+                     .thickness(2.0)
+                     .build();
+
+            let angle = (second as f32 / 60.0 * 360.0).to_radians();
+            let (x, y) = angle.sin_cos();
+            let x = CENTER_X + x*40.0;
+            let y = CENTER_Y - y*40.0;
+            draw_list.add_line(CENTER, [x, y], RED_COLOR)
+                     .thickness(1.0)
+                     .build();
+
+            draw_list.add_circle(CENTER, 4.0, BLACK_COLOR)
+                     .num_segments(8)
+                     .filled(true)
+                     .build();
         });
         // Pop the window background and font tokens
         ts.pop(&ui);
