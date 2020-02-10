@@ -1,11 +1,14 @@
 /***********************************************************************
  * panel-prototype/src/system_support.rs
- *    Module "system_support" for instantiation and configuration of 
- *   the glium/glutin/winit infrastructure. 
+ *      Module "system_support" for instantiation and configuration of 
+ *      glium/glutin/winit infrastructure. 
+ * Copyright (C) 2020, Paul Kimpel.
+ * Licensed under the MIT License, see
+ *      http://www.opensource.org/licenses/mit-license.php
  ***********************************************************************
  * Modification log.
  * 2020-02-06  P.Kimpel
- *     Original version.
+ *     Original version, largely cloned from imgui-rs crate examples.
  **********************************************************************/
 
 use glium::glutin::{self, Event, WindowEvent};
@@ -38,7 +41,7 @@ impl System {
         let context = glutin::ContextBuilder::new().with_vsync(true);
         let builder = glutin::WindowBuilder::new()
             .with_title(title.to_owned())
-            .with_dimensions(glutin::dpi::LogicalSize::new(660f64, 340f64));
+            .with_dimensions(glutin::dpi::LogicalSize::new(660f64, 400f64));
 
         // Create the Display object to drive OpenGL    
         let display = Display::new(builder, context, &events_loop)

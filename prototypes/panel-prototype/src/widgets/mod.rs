@@ -1,7 +1,10 @@
 /***********************************************************************
  * panel-prototype/src/widgets/mod.rs
- *  Module "widgets".
- *  User interface widgets for buttons, switches, lamps, etc.
+ *      Module "widgets".
+ *      User interface widgets for buttons, switches, lamps, etc.
+ * Copyright (C) 2020, Paul Kimpel.
+ * Licensed under the MIT License, see
+ *      http://www.opensource.org/licenses/mit-license.php
  ***********************************************************************
  * Modification log.
  * 2020-02-07  P.Kimpel

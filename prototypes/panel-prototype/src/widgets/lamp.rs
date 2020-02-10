@@ -1,7 +1,10 @@
 /***********************************************************************
  * panel-prototype/src/widgets/lamp.rs
- *  Module "widgets::lamp".
- *  Panel lamps.
+ *      Module "widgets::lamp".
+ *      Panel lamps.
+ * Copyright (C) 2020, Paul Kimpel.
+ * Licensed under the MIT License, see
+ *      http://www.opensource.org/licenses/mit-license.php
  ***********************************************************************
  * Modification log.
  * 2020-02-07  P.Kimpel

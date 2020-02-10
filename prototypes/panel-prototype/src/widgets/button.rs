@@ -1,7 +1,10 @@
 /***********************************************************************
  * panel-prototype/src/widgets/button.rs
- *  Module "widgets::button".
- *  Lighted and unlighted panel buttons.
+ *      Module "widgets::button".
+ *      Lighted and unlighted panel buttons.
+ * Copyright (C) 2020, Paul Kimpel.
+ * Licensed under the MIT License, see
+ *      http://www.opensource.org/licenses/mit-license.php
  ***********************************************************************
  * Modification log.
  * 2020-02-07  P.Kimpel

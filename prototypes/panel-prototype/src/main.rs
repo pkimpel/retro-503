@@ -1,7 +1,7 @@
 /***********************************************************************
  * panel-prototype/src/main.rs
- *     Prototype for development of an initial Elliott 503 operator
- *     control panel with pushbottons and lamps.
+ *      Prototype for development of an initial Elliott 503 operator
+ *      control panel with pushbottons and lamps.
  ***********************************************************************
  * Modification log.
  * 2020-01-26  P.Kimpel
@@ -10,6 +10,9 @@
 
 use chrono::{DateTime, Local, Timelike};
 use imgui::{im_str, Condition, StyleColor, StyleVar, Window};
+
+mod register;
+use register::{Register, EmulationClock};
 
 mod system_support;
 use system_support::{System};
@@ -23,6 +26,7 @@ use widgets::lamp::Lamp;
 
 pub struct State {
     pub power_on: bool,
+    pub last_clock: f64,
     pub busy_glow: f32,
     pub no_protn: bool,
     pub digital_plotter_manual: bool,
@@ -38,8 +42,13 @@ pub struct State {
 
 
 fn main() {
+    const TIMER_PERIOD: f64 = 0.015625;
+    let eclock = EmulationClock::new(0.0);
+    let mut timer: Register<u32> = Register::new(30, &eclock);
+
     let mut state = State {
         power_on: false,
+        last_clock: 0.0,
         busy_glow: 0.0,
         no_protn: false,
         digital_plotter_manual: false,
@@ -202,11 +211,28 @@ fn main() {
 
     // Start the System event loop
     system.main_loop(|_run, ui| {
+        let frames = ui.frame_count();
+        let clock = ui.time();
+        let ticks = clock.fract() as f32;
+        let phase = (ticks*2.0) as i32;
+        let angle = ((clock*24.0)%360.0).to_radians();
 
         // Set the current font and OS-level window background color
         let our_font = ui.push_font(alt_font);
         let tw = ui.push_style_color(StyleColor::WindowBg, BG_COLOR);
         let ts = ui.push_style_var(StyleVar::WindowRounding(0.0));
+
+        // Update the timer register since the last frame
+        if state.power_on {
+            let mut delta_clock = clock - state.last_clock;
+            while delta_clock > 0.0 {
+                eclock.advance(TIMER_PERIOD);
+                timer.add(1);
+                delta_clock -= TIMER_PERIOD;
+            }
+        }
+
+        state.last_clock = clock;
 
         // Create the Panel A window
         let panel_a = Window::new(im_str!("Panel A"))
@@ -222,11 +248,6 @@ fn main() {
 
         // Build our Panel A window and its inner widgets in the closure
         panel_a.build(&ui, || {
-            let frames = ui.frame_count();
-            let clock = ui.time();
-            let ticks = clock.fract() as f32;
-            let phase = (ticks*2.0) as i32;
-            let angle = ((clock*24.0)%360.0).to_radians();
             let draw_list = ui.get_window_draw_list();
 
             if state.power_on {
@@ -234,11 +255,6 @@ fn main() {
                 state.transfer_glow = state.transfer_glow*0.84 + (ticks*3456.0).fract()*0.16;
                 state.tag_glow = state.tag_glow*0.84 + (ticks*4567.0).fract()*0.16;
                 state.type_hold_glow = state.type_hold_glow*0.84 + (ticks*7654.0).fract()*0.16;
-            } else {
-                state.busy_glow = 0.0;
-                state.transfer_glow = 0.0;
-                state.tag_glow = 0.0;
-                state.type_hold_glow = 0.0;
             }
 
             // Define the blinking circle
@@ -261,6 +277,12 @@ fn main() {
                 state.digital_plotter_manual = false;
                 state.manual_state = false;
                 state.reset_state = false;
+                state.busy_glow = 0.0;
+                state.transfer_glow = 0.0;
+                state.tag_glow = 0.0;
+                state.type_hold_glow = 0.0;
+                timer.set(0);
+                timer.update_glow(1.0);
             }
             
             if on_btn.build(&ui, state.power_on) & !state.power_on {
@@ -309,6 +331,9 @@ fn main() {
             } else {
                 state.reset_state = false;
             }
+
+            // Display the ImGui metrics window (debug)
+            //ui.show_metrics_window(&mut metrics_open);
         });
 
         // Create the Panel B window
@@ -391,12 +416,40 @@ fn main() {
                      .filled(true)
                      .build();
         });
+
+        // Create the Panel C window
+        let panel_c = Window::new(im_str!("Panel C"))
+            .resizable(false)
+            .scroll_bar(false)
+            .collapsible(false)
+            .menu_bar(false)
+            .title_bar(false)
+            .scrollable(false)
+            .position([20.0, 340.0], Condition::FirstUseEver)
+            .size([620.0, 40.0], Condition::FirstUseEver);
+        //panel_c = panel_c.opened(run);    // Enable clicking of the window-close icon
+
+        // Build our Panel c window and its inner widgets in the closure
+        panel_c.build(&ui, || {
+            const CENTER_Y: f32 = 360.0;
+            const RIGHT_X: f32 = 620.0;
+            let draw_list = ui.get_window_draw_list();
+            let glow = timer.read_glow();
+            let mut x = RIGHT_X;
+
+            for g in glow.iter() {
+                let color: Color4 = [*g, *g*0.6, *g*0.1, 1.0];
+                draw_list.add_circle([x, CENTER_Y], 8.0, color)
+                        .num_segments(12)
+                        .filled(true)
+                        .build();
+                x -= 20.0;
+            }
+        });
+
         // Pop the window background and font tokens
         ts.pop(&ui);
         tw.pop(&ui);
         our_font.pop(&ui);       // revert to default font
-
-        // Display the ImGui metrics window (debug)
-        //ui.show_metrics_window(&mut metrics_open);
     });
 }
