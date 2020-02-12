@@ -53,16 +53,15 @@ pub struct Register<'a, T> {
     power_mask: T,
     sign_mask: T,
     overflow: bool,
-    value: Cell<T>,
+    value: T,
     glow: Vec<f32>
 }
 
 impl<'a, T> Register<'a, T> 
-where T: Copy + 
+where T: Copy + Eq +
          BitAnd<Output=T> + BitOr<Output=T> + BitXor<Output=T> + Not<Output=T> +
          Add<Output=T> + AddAssign + Sub<Output=T> + Mul<Output=T> +
-         Shl<Output=T> + Shr<Output=T> + ShrAssign +
-         From<u8> + Eq {
+         Shl<Output=T> + Shr<Output=T> + ShrAssign + From<u8> {
     
     pub fn new(bits: u8, clock:&'a EmulationClock) -> Self {
         Register {
@@ -73,7 +72,7 @@ where T: Copy +
             power_mask: T::from(1) << T::from(bits),
             sign_mask: T::from(1) << T::from(bits-1),
             overflow: false,
-            value: Cell::new(T::from(0)),
+            value: T::from(0),
             glow: vec![0_f32; bits as usize]
         }
     }
@@ -82,16 +81,16 @@ where T: Copy +
         let this_tick = self.clock.read();
         let elapsed = (this_tick - self.last_tick).max(CLOCK_PERIOD);
         let alpha = (elapsed/LAMP_PERSISTENCE + beta).min(1.0) as f32;
-        let a1 = 1.0 - alpha;
-        let mut v = self.value.get();
+        let alpha1 = 1.0 - alpha;
+        let mut v = self.value;
         
         self.last_tick = this_tick;
         for g in self.glow.iter_mut() {
             let b = v & T::from(1);
             if b == T::from(0) {
-                *g *= a1;
+                *g *= alpha1;
             } else {
-                *g = *g*a1 + alpha;
+                *g = *g*alpha1 + alpha;
             }
 
             v >>= T::from(1);
@@ -103,16 +102,16 @@ where T: Copy +
     }
 
     pub fn read(&self) -> T {
-        self.value.get()
+        self.value
     }
 
     pub fn set(&mut self, value: T) {
-        self.value.set(value & self.mask);
+        self.value = value & self.mask;
         self.update_glow(0.0);
     }
 
     pub fn add(&mut self, value: T) {
-        let augend = self.value.get();
+        let augend = self.value;
         let result = augend + value;
         if (augend & self.sign_mask) == (value & self.sign_mask) {
             if (value & self.sign_mask) != (result & self.sign_mask) {
@@ -120,24 +119,23 @@ where T: Copy +
             }
         }
 
-        self.value.set(result & self.mask);
+        self.value = result & self.mask;
         self.update_glow(0.0);
     }
 
     pub fn add_unsigned(&mut self, value: T) {
-        let augend = self.value.get();
+        let augend = self.value;
         let result = augend + value;
         if (value & self.power_mask) != (result & self.power_mask) {
             self.overflow = true;
         }
 
-        self.value.set(result & self.mask);
+        self.value = result & self.mask;
         self.update_glow(0.0);
     }
 
     pub fn negate(&mut self) {
-        let result = self.power_mask - self.value.get();
-        self.value.set(result);
+        self.value = self.power_mask - self.value;
         self.update_glow(0.0);
     }
 

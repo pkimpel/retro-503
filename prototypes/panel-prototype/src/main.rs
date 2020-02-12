@@ -2,6 +2,9 @@
  * panel-prototype/src/main.rs
  *      Prototype for development of an initial Elliott 503 operator
  *      control panel with pushbottons and lamps.
+ * Copyright (C) 2020, Paul Kimpel.
+ * Licensed under the MIT License, see
+ *      http://www.opensource.org/licenses/mit-license.php
  ***********************************************************************
  * Modification log.
  * 2020-01-26  P.Kimpel
@@ -9,7 +12,8 @@
  **********************************************************************/
 
 use chrono::{DateTime, Local, Timelike};
-use imgui::{im_str, Condition, StyleColor, StyleVar, Window};
+use imgui::{im_str, Condition, StyleColor, StyleVar, Window, Ui};
+use imgui::{WindowDrawList};
 
 mod register;
 use register::{Register, EmulationClock};
@@ -41,8 +45,67 @@ pub struct State {
 }
 
 
+fn draw_clock(draw_list: &WindowDrawList) {
+    // Build the simple clock
+    const CENTER_X: f32 = 590.0;
+    const CENTER_Y: f32 = 180.0;
+    const CENTER: [f32; 2] = [CENTER_X, CENTER_Y];
+
+    let stamp: DateTime<Local> = Local::now();
+    let hour = (stamp.hour()%12) as f32;
+    let minute = stamp.minute() as f32;
+    let second = stamp.second() as f32;
+    
+    draw_list.add_circle(CENTER, 42.0, GRAY_LIGHT)
+                .num_segments(24)
+                .thickness(2.0)
+                .build();
+
+    for h in 0..12 {
+        let angle = (h as f32 / 12.0 * 360.0).to_radians();
+        let (x, y) = angle.sin_cos();
+        let x1 = CENTER_X + x*40.0;
+        let y1 = CENTER_Y - y*40.0;
+        let x2 = CENTER_X + x*42.0;
+        let y2 = CENTER_Y - y*42.0;
+        draw_list.add_line([x1, y1], [x2, y2], BLACK_COLOR)
+                    .thickness(2.0)
+                    .build();
+    }
+    
+    let angle = (((hour*60.0 + minute)*60.0 + second) / 43200.0 * 360.0).to_radians();
+    let (x, y) = angle.sin_cos();
+    let x = CENTER_X + x*25.0;
+    let y = CENTER_Y - y*25.0;
+    draw_list.add_line(CENTER, [x, y], GRAY_DARK)
+                .thickness(3.0)
+                .build();
+    
+    let angle = ((minute*60.0 + second) / 3600.0 * 360.0).to_radians();
+    let (x, y) = angle.sin_cos();
+    let x = CENTER_X + x*35.0;
+    let y = CENTER_Y - y*35.0;
+    draw_list.add_line(CENTER, [x, y], GRAY_DARK)
+                .thickness(2.0)
+                .build();
+
+    let angle = (second / 60.0 * 360.0).to_radians();
+    let (x, y) = angle.sin_cos();
+    let x = CENTER_X + x*40.0;
+    let y = CENTER_Y - y*40.0;
+    draw_list.add_line(CENTER, [x, y], RED_COLOR)
+                .thickness(1.0)
+                .build();
+
+    draw_list.add_circle(CENTER, 4.0, BLACK_COLOR)
+                .num_segments(8)
+                .filled(true)
+                .build();
+
+}
+
 fn main() {
-    const TIMER_PERIOD: f64 = 0.015625;
+    const TIMER_PERIOD: f64 = 7.2e-6;
     let eclock = EmulationClock::new(0.0);
     let mut timer: Register<u32> = Register::new(30, &eclock);
 
@@ -226,8 +289,8 @@ fn main() {
         if state.power_on {
             let mut delta_clock = clock - state.last_clock;
             while delta_clock > 0.0 {
-                eclock.advance(TIMER_PERIOD);
-                timer.add(1);
+                timer.add(1);       // Update registers BEFORE advancing the clock
+                eclock.advance(TIMER_PERIOD);   // for proper glow calculation
                 delta_clock -= TIMER_PERIOD;
             }
         }
@@ -299,14 +362,15 @@ fn main() {
             }
 
             if no_protn_btn.build(&ui, state.no_protn) && state.power_on {
-                println!("No Protection");
+                println!("No Protection...");
                 state.no_protn = !state.no_protn;
                 // Switch the protection state
             }
 
             if clear_btn.build(&ui, true) && state.power_on {
-                println!("Clear");
+                println!("Clear...");
                 // Clear the system state
+                timer.set(0);
             }
 
             transfer_lamp.build(&ui, state.transfer_glow);
@@ -353,68 +417,14 @@ fn main() {
             let draw_list = ui.get_window_draw_list();
 
             if plotter_manual_btn.build(&ui, state.digital_plotter_manual) && state.power_on {
-                println!("Digital Plotter Manual");
+                println!("Digital Plotter Manual...");
                 state.digital_plotter_manual = !state.digital_plotter_manual;
                 // Change digital plotter state
             }
 
             backing_store_lamp.build(&ui, if state.backing_store_parity {1.0} else {0.0});
 
-            // Build the simple clock
-            const CENTER_X: f32 = 590.0;
-            const CENTER_Y: f32 = 180.0;
-            const CENTER: [f32; 2] = [CENTER_X, CENTER_Y];
-
-            let stamp: DateTime<Local> = Local::now();
-            let hour = stamp.hour()%12;
-            let minute = stamp.minute();
-            let second = stamp.second();
-
-            draw_list.add_circle(CENTER, 42.0, GRAY_LIGHT)
-                     .num_segments(24)
-                     .thickness(2.0)
-                     .build();
-
-            for h in 0..12 {
-                let angle = (h as f32 / 12.0 * 360.0).to_radians();
-                let (x, y) = angle.sin_cos();
-                let x1 = CENTER_X + x*40.0;
-                let y1 = CENTER_Y - y*40.0;
-                let x2 = CENTER_X + x*42.0;
-                let y2 = CENTER_Y - y*42.0;
-                draw_list.add_line([x1, y1], [x2, y2], BLACK_COLOR)
-                         .thickness(2.0)
-                         .build();
-            }
-            
-            let angle = (((hour*60 + minute)*60 + second) as f32 / 43200.0 * 360.0).to_radians();
-            let (x, y) = angle.sin_cos();
-            let x = CENTER_X + x*25.0;
-            let y = CENTER_Y - y*25.0;
-            draw_list.add_line(CENTER, [x, y], GRAY_DARK)
-                     .thickness(3.0)
-                     .build();
-            
-            let angle = ((minute*60 + second) as f32 / 3600.0 * 360.0).to_radians();
-            let (x, y) = angle.sin_cos();
-            let x = CENTER_X + x*35.0;
-            let y = CENTER_Y - y*35.0;
-            draw_list.add_line(CENTER, [x, y], GRAY_DARK)
-                     .thickness(2.0)
-                     .build();
-
-            let angle = (second as f32 / 60.0 * 360.0).to_radians();
-            let (x, y) = angle.sin_cos();
-            let x = CENTER_X + x*40.0;
-            let y = CENTER_Y - y*40.0;
-            draw_list.add_line(CENTER, [x, y], RED_COLOR)
-                     .thickness(1.0)
-                     .build();
-
-            draw_list.add_circle(CENTER, 4.0, BLACK_COLOR)
-                     .num_segments(8)
-                     .filled(true)
-                     .build();
+            draw_clock(&draw_list);
         });
 
         // Create the Panel C window
@@ -429,7 +439,7 @@ fn main() {
             .size([620.0, 40.0], Condition::FirstUseEver);
         //panel_c = panel_c.opened(run);    // Enable clicking of the window-close icon
 
-        // Build our Panel c window and its inner widgets in the closure
+        // Build our Panel C window and its inner widgets in the closure
         panel_c.build(&ui, || {
             const CENTER_Y: f32 = 360.0;
             const RIGHT_X: f32 = 620.0;
@@ -438,7 +448,7 @@ fn main() {
             let mut x = RIGHT_X;
 
             for g in glow.iter() {
-                let color: Color4 = [*g, *g*0.6, *g*0.1, 1.0];
+                let color: Color4 = [*g, *g*0.4, 0.0, 1.0]; // neon orange
                 draw_list.add_circle([x, CENTER_Y], 8.0, color)
                         .num_segments(12)
                         .filled(true)

@@ -27,5 +27,5 @@ pub static BLACK_COLOR: Color4 = [0.0, 0.0, 0.0, 1.0];
 pub static GRAY_DARK: Color4 = [0.25, 0.25, 0.25, 1.0];
 pub static GRAY_COLOR: Color4 = [0.5, 0.5, 0.5, 1.0];
 pub static GRAY_LIGHT: Color4 = [0.75, 0.75, 0.75, 1.0];
-pub static AMBER_COLOR: Color4 = [1.0, 0.494, 0.0, 1.0];
-pub static AMBER_DARK: Color4 = [0.6, 0.296, 0.0, 1.0];
+pub static AMBER_COLOR: Color4 = [1.0, 0.8, 0.0, 1.0];
+pub static AMBER_DARK: Color4 = [0.6, 0.3, 0.0, 1.0];
