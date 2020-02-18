@@ -1,24 +1,23 @@
 /***********************************************************************
-* panel-prototype/src/widgets/button.rs
-*   Module "widgets::button".
-*   Lighted and unlighted panel buttons.
+* panel-prototype/src/widgets/register_lamp.rs
+*   Module "widgets::register_lamp".
+*   Panel lamps.
 * Copyright (C) 2020, Paul Kimpel.
 * Licensed under the MIT License, see
 *       http://www.opensource.org/licenses/mit-license.php
 ************************************************************************
 * Modification log.
-* 2020-02-07  P.Kimpel
-*   Original version.
+* 2020-02-16  P.Kimpel
+*   Original version, cloned from widgets/lamp.rs.
 ***********************************************************************/
 
 use imgui::{im_str, ImStr, StyleColor, StyleVar, Ui};
 use super::*;
 
-pub struct Button<'a> {
+pub struct RegisterLamp<'a> {
     pub position: Position,
     pub frame_size: FrameSize,
-    pub off_color: Color4,
-    pub on_color: Color4,
+    pub colors: &'a [Color4],
     pub active_color: Color4,
     pub border_color: Color4,
     pub border_shadow: Color4,
@@ -28,40 +27,43 @@ pub struct Button<'a> {
     pub label_text: &'a ImStr
 }
 
-impl<'a> Default for Button<'a> {
+impl<'a> Default for RegisterLamp<'a> {
     fn default() -> Self {
         let label_text = im_str!("");
-        Button {
+        Lamp {
             position: [0.0, 0.0],
-            frame_size: [50.0, 50.0],
-            off_color: GREEN_COLOR,
-            on_color: GREEN_COLOR,
-            active_color: GRAY_LIGHT,
-            border_color: GRAY_COLOR,
+            frame_size: [12.0, 12.0],
+            colors: &super::NEON_LEVEL,
+            active_color: GRAY_COLOR,
+            border_color: BLACK_COLOR,
             border_shadow: BLACK_COLOR,
-            border_size: 6.0,
-            border_rounding: 1.0,
+            border_size: 0.0,
+            border_rounding: 3.0,
             label_color: BLACK_COLOR,
             label_text
         }
     }
 }
 
-impl<'a> Button<'a> {
-    pub fn build(&self, ui: &Ui, state: bool) -> bool {
+impl<'a> RegisterLamp<'a> {
+    pub fn build(&self, ui: &Ui, intensity: f32) -> bool{
         let t0 = ui.push_style_vars(&[
             StyleVar::FrameRounding(self.border_rounding),
             StyleVar::FrameBorderSize(self.border_size)
         ]);
 
-        let new_color = &if state {self.on_color} else {self.off_color};
         let t1 = ui.push_style_colors(&[
             (StyleColor::Text, self.label_color),
             (StyleColor::Border, self.border_color),
-            (StyleColor::Button, *new_color),
-            (StyleColor::ButtonHovered, *new_color),
-            (StyleColor::ButtonActive, self.active_color)
-        ]);
+            //(StyleColor::BorderShadow, self.border_shadow),
+            (StyleColor::Button, color),
+            (StyleColor::ButtonActive, self.active_color),
+            (StyleColor::ButtonHovered, color)
+            ]);
+
+        // Compute the lamp intensity
+        let level = (intensity*(self.colors.len()-1)).round() as usize;
+        let color = &self.colors[level];
 
         ui.set_cursor_pos(self.position);
         let clicked = ui.button(self.label_text, self.frame_size);

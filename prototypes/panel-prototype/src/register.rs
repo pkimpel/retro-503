@@ -1,12 +1,15 @@
 /***********************************************************************
- * panel-prototype/src/register.rs
- *      Module "register" for a generic register object with time-averaged
- *      lamp-glow averaging.
- ***********************************************************************
- * Modification log.
- * 2020-02-09  P.Kimpel
- *     Original version.
- **********************************************************************/
+* panel-prototype/src/register.rs
+*   Module "register" for a generic register object with time-averaged
+*   lamp-glow averaging.
+* Copyright (C) 2020, Paul Kimpel.
+* Licensed under the MIT License, see
+*       http://www.opensource.org/licenses/mit-license.php
+************************************************************************
+* Modification log.
+* 2020-02-09  P.Kimpel
+*   Original version.
+***********************************************************************/
 
 use std::ops::*;
 use std::cell::Cell;
@@ -57,12 +60,12 @@ pub struct Register<'a, T> {
     glow: Vec<f32>
 }
 
-impl<'a, T> Register<'a, T> 
+impl<'a, T> Register<'a, T>
 where T: Copy + Eq +
          BitAnd<Output=T> + BitOr<Output=T> + BitXor<Output=T> + Not<Output=T> +
          Add<Output=T> + AddAssign + Sub<Output=T> + Mul<Output=T> +
          Shl<Output=T> + Shr<Output=T> + ShrAssign + From<u8> {
-    
+
     pub fn new(bits: u8, clock:&'a EmulationClock) -> Self {
         Register {
             bits,
@@ -83,7 +86,7 @@ where T: Copy + Eq +
         let alpha = (elapsed/LAMP_PERSISTENCE + beta).min(1.0) as f32;
         let alpha1 = 1.0 - alpha;
         let mut v = self.value;
-        
+
         self.last_tick = this_tick;
         for g in self.glow.iter_mut() {
             let b = v & T::from(1);

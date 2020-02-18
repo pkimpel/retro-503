@@ -1,15 +1,15 @@
 /***********************************************************************
- * panel-prototype/src/system_support.rs
- *      Module "system_support" for instantiation and configuration of 
- *      glium/glutin/winit infrastructure. 
- * Copyright (C) 2020, Paul Kimpel.
- * Licensed under the MIT License, see
- *      http://www.opensource.org/licenses/mit-license.php
- ***********************************************************************
- * Modification log.
- * 2020-02-06  P.Kimpel
- *     Original version, largely cloned from imgui-rs crate examples.
- **********************************************************************/
+* panel-prototype/src/system_support.rs
+*   Module "system_support" for instantiation and configuration of
+*   glium/glutin/winit infrastructure.
+* Copyright (C) 2020, Paul Kimpel.
+* Licensed under the MIT License, see
+*       http://www.opensource.org/licenses/mit-license.php
+************************************************************************
+* Modification log.
+* 2020-02-06  P.Kimpel
+*     Original version, largely cloned from imgui-rs crate examples.
+***********************************************************************/
 
 use glium::glutin::{self, Event, WindowEvent};
 use glium::{Display, Surface};
@@ -43,10 +43,10 @@ impl System {
             .with_title(title.to_owned())
             .with_dimensions(glutin::dpi::LogicalSize::new(660f64, 400f64));
 
-        // Create the Display object to drive OpenGL    
+        // Create the Display object to drive OpenGL
         let display = Display::new(builder, context, &events_loop)
                               .expect("Failed to initialize display");
-        
+
         // Create and initialize the ImGui context
         let mut imgui = Context::create();
         imgui.set_ini_filename(None);

@@ -1,15 +1,15 @@
 /***********************************************************************
- * panel-prototype/src/main.rs
- *      Prototype for development of an initial Elliott 503 operator
- *      control panel with pushbottons and lamps.
- * Copyright (C) 2020, Paul Kimpel.
- * Licensed under the MIT License, see
- *      http://www.opensource.org/licenses/mit-license.php
- ***********************************************************************
- * Modification log.
- * 2020-01-26  P.Kimpel
- *     Original version, from ui_one prototype.
- **********************************************************************/
+* panel-prototype/src/main.rs
+*   Prototype for development of an initial Elliott 503 operator
+*   control panel with pushbottons and lamps.
+* Copyright (C) 2020, Paul Kimpel.
+* Licensed under the MIT License, see
+*       http://www.opensource.org/licenses/mit-license.php
+************************************************************************
+* Modification log.
+* 2020-01-26  P.Kimpel
+*   Original version, from ui_one prototype.
+***********************************************************************/
 
 use chrono::{DateTime, Local, Timelike};
 use imgui::{im_str, Condition, StyleColor, StyleVar, Window, Ui};
@@ -25,7 +25,8 @@ mod widgets;
 use widgets::*;
 
 use widgets::button::Button;
-use widgets::lamp::Lamp;
+use widgets::panel_lamp::PanelLamp;
+use widgets::register_display::RegisterDisplay;
 
 
 pub struct State {
@@ -55,7 +56,7 @@ fn draw_clock(draw_list: &WindowDrawList) {
     let hour = (stamp.hour()%12) as f32;
     let minute = stamp.minute() as f32;
     let second = stamp.second() as f32;
-    
+
     draw_list.add_circle(CENTER, 42.0, GRAY_LIGHT)
                 .num_segments(24)
                 .thickness(2.0)
@@ -72,7 +73,7 @@ fn draw_clock(draw_list: &WindowDrawList) {
                     .thickness(2.0)
                     .build();
     }
-    
+
     let angle = (((hour*60.0 + minute)*60.0 + second) / 43200.0 * 360.0).to_radians();
     let (x, y) = angle.sin_cos();
     let x = CENTER_X + x*25.0;
@@ -80,7 +81,7 @@ fn draw_clock(draw_list: &WindowDrawList) {
     draw_list.add_line(CENTER, [x, y], GRAY_DARK)
                 .thickness(3.0)
                 .build();
-    
+
     let angle = ((minute*60.0 + second) / 3600.0 * 360.0).to_radians();
     let (x, y) = angle.sin_cos();
     let x = CENTER_X + x*35.0;
@@ -133,7 +134,7 @@ fn main() {
     let off_btn = Button {
         position: [20.0, 40.0],
         frame_size: [60.0, 60.0],
-        off_color: RED_DARK, 
+        off_color: RED_DARK,
         on_color: RED_COLOR,
         active_color: RED_COLOR,
         label_text: im_str!("OFF"),
@@ -143,17 +144,17 @@ fn main() {
     let on_btn = Button {
         position: [100.0, 40.0],
         frame_size: [60.0, 60.0],
-        off_color: GREEN_DARK, 
+        off_color: GREEN_DARK,
         on_color: GREEN_COLOR,
         active_color: GREEN_COLOR,
         label_text: im_str!("ON"),
         ..Default::default()
     };
 
-    let busy_lamp = Lamp {
+    let busy_lamp = PanelLamp {
         position: [180.0, 40.0],
         frame_size: [60.0, 40.0],
-        off_color: AMBER_DARK, 
+        off_color: AMBER_DARK,
         on_color: AMBER_COLOR,
         label_text: im_str!("BUSY"),
         ..Default::default()
@@ -162,7 +163,7 @@ fn main() {
     let initial_instructions_btn = Button {
         position: [260.0, 40.0],
         frame_size: [60.0, 60.0],
-        off_color: GRAY_LIGHT, 
+        off_color: GRAY_LIGHT,
         on_color: GRAY_LIGHT,
         active_color: GRAY_COLOR,
         label_text: im_str!("INITIAL\nINSTRUC\nTIONS"),
@@ -172,7 +173,7 @@ fn main() {
     let no_protn_btn = Button {
         position: [340.0, 40.0],
         frame_size: [60.0, 60.0],
-        off_color: GREEN_DARK, 
+        off_color: GREEN_DARK,
         on_color: GREEN_COLOR,
         label_text: im_str!("NO\nPROTN"),
         ..Default::default()
@@ -181,7 +182,7 @@ fn main() {
     let clear_btn = Button {
         position: [420.0, 40.0],
         frame_size: [60.0, 60.0],
-        off_color: GRAY_LIGHT, 
+        off_color: GRAY_LIGHT,
         on_color: GRAY_LIGHT,
         active_color: GRAY_COLOR,
         label_text: im_str!("CLEAR"),
@@ -191,7 +192,7 @@ fn main() {
     let plotter_manual_btn = Button {
         position: [20.0, 40.0],
         frame_size: [60.0, 60.0],
-        off_color: RED_DARK, 
+        off_color: RED_DARK,
         on_color: RED_COLOR,
         label_text: im_str!("DIGITAL\nPLOTTER\nMANUAL"),
         ..Default::default()
@@ -199,47 +200,47 @@ fn main() {
 
     // Define the panel widgets -- middle row
 
-    let transfer_lamp = Lamp {
+    let transfer_lamp = PanelLamp {
         position: [180.0, 140.0],
         frame_size: [60.0, 40.0],
-        off_color: GREEN_DARK, 
+        off_color: GREEN_DARK,
         on_color: GREEN_COLOR,
         label_text: im_str!("TRANSFER"),
         ..Default::default()
     };
 
     // Define the panel widgets -- bottom row
-    let air_condition_lamp = Lamp {
+    let air_condition_lamp = PanelLamp {
         position: [20.0, 220.0],
         frame_size: [60.0, 40.0],
-        off_color: RED_DARK, 
+        off_color: RED_DARK,
         on_color: RED_COLOR,
         label_text: im_str!("AIR\nCONDITION"),
         ..Default::default()
     };
 
-    let error_lamp = Lamp {
+    let error_lamp = PanelLamp {
         position: [100.0, 220.0],
         frame_size: [60.0, 40.0],
-        off_color: RED_DARK, 
+        off_color: RED_DARK,
         on_color: RED_COLOR,
         label_text: im_str!("ERROR"),
         ..Default::default()
     };
 
-    let tag_lamp = Lamp {
+    let tag_lamp = PanelLamp {
         position: [180.0, 220.0],
         frame_size: [60.0, 40.0],
-        off_color: AMBER_DARK, 
+        off_color: AMBER_DARK,
         on_color: AMBER_COLOR,
         label_text: im_str!("TAG"),
         ..Default::default()
     };
 
-    let type_hold_lamp = Lamp {
+    let type_hold_lamp = PanelLamp {
         position: [260.0, 220.0],
         frame_size: [60.0, 40.0],
-        off_color: AMBER_DARK, 
+        off_color: AMBER_DARK,
         on_color: AMBER_COLOR,
         label_text: im_str!("TYPE\nHOLD"),
         ..Default::default()
@@ -248,7 +249,7 @@ fn main() {
     let manual_btn = Button {
         position: [340.0, 200.0],
         frame_size: [60.0, 60.0],
-        off_color: RED_DARK, 
+        off_color: RED_DARK,
         on_color: RED_COLOR,
         label_text: im_str!("MANUAL"),
         ..Default::default()
@@ -257,18 +258,23 @@ fn main() {
     let reset_btn = Button {
         position: [420.0, 200.0],
         frame_size: [60.0, 60.0],
-        off_color: GREEN_DARK, 
+        off_color: GREEN_DARK,
         on_color: GREEN_COLOR,
         label_text: im_str!("RESET"),
         ..Default::default()
     };
 
-    let backing_store_lamp = Lamp {
+    let backing_store_lamp = PanelLamp {
         position: [20.0, 220.0],
         frame_size: [60.0, 40.0],
-        off_color: RED_DARK, 
+        off_color: RED_DARK,
         on_color: RED_COLOR,
         label_text: im_str!("BACKING\nSTORE\nPARITY"),
+        ..Default::default()
+    };
+
+    let demo_register = RegisterDisplay {
+        position: [101.0, 14.0],
         ..Default::default()
     };
 
@@ -331,7 +337,7 @@ fn main() {
                          .thickness(1.0)
                          .build();
             }
-            
+
             if off_btn.build(&ui, !state.power_on) && state.power_on {
                 println!("Power Off... frames={}, time={}, fps={}", frames, clock, frames as f64/clock);
                 state.power_on = false;
@@ -347,7 +353,7 @@ fn main() {
                 timer.set(0);
                 timer.update_glow(1.0);
             }
-            
+
             if on_btn.build(&ui, state.power_on) & !state.power_on {
                 println!("Power On... frames={}, time={}, fps={}", frames, clock, frames as f64/clock);
                 state.power_on = true;
@@ -441,20 +447,8 @@ fn main() {
 
         // Build our Panel C window and its inner widgets in the closure
         panel_c.build(&ui, || {
-            const CENTER_Y: f32 = 360.0;
-            const RIGHT_X: f32 = 620.0;
-            let draw_list = ui.get_window_draw_list();
             let glow = timer.read_glow();
-            let mut x = RIGHT_X;
-
-            for g in glow.iter() {
-                let color: Color4 = [*g, *g*0.4, 0.0, 1.0]; // neon orange
-                draw_list.add_circle([x, CENTER_Y], 8.0, color)
-                        .num_segments(12)
-                        .filled(true)
-                        .build();
-                x -= 20.0;
-            }
+            let clicks = demo_register.build(&ui, glow);
         });
 
         // Pop the window background and font tokens
