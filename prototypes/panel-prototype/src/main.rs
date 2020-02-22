@@ -24,7 +24,7 @@ use system_support::{System};
 mod widgets;
 use widgets::*;
 
-use widgets::button::Button;
+use widgets::panel_button::PanelButton;
 use widgets::panel_lamp::PanelLamp;
 use widgets::register_display::RegisterDisplay;
 
@@ -34,7 +34,7 @@ pub struct State {
     pub last_clock: f64,
     pub busy_glow: f32,
     pub no_protn: bool,
-    pub digital_plotter_manual: bool,
+    pub plotter_manual: bool,
     pub transfer_glow: f32,
     pub air_cond: bool,
     pub error_state: bool,
@@ -109,13 +109,14 @@ fn main() {
     const TIMER_PERIOD: f64 = 7.2e-6;
     let eclock = EmulationClock::new(0.0);
     let mut timer: Register<u32> = Register::new(30, &eclock);
+    timer.set(1234567);
 
     let mut state = State {
         power_on: false,
         last_clock: 0.0,
         busy_glow: 0.0,
         no_protn: false,
-        digital_plotter_manual: false,
+        plotter_manual: false,
         transfer_glow: 0.0,
         air_cond: false,
         error_state: false,
@@ -131,22 +132,20 @@ fn main() {
     let alt_font = system.alt_font;
 
     // Define the panel widgets -- top row
-    let off_btn = Button {
+    let off_btn = PanelButton {
         position: [20.0, 40.0],
         frame_size: [60.0, 60.0],
         off_color: RED_DARK,
         on_color: RED_COLOR,
-        active_color: RED_COLOR,
         label_text: im_str!("OFF"),
         ..Default::default()
     };
 
-    let on_btn = Button {
+    let on_btn = PanelButton {
         position: [100.0, 40.0],
         frame_size: [60.0, 60.0],
         off_color: GREEN_DARK,
         on_color: GREEN_COLOR,
-        active_color: GREEN_COLOR,
         label_text: im_str!("ON"),
         ..Default::default()
     };
@@ -160,17 +159,17 @@ fn main() {
         ..Default::default()
     };
 
-    let initial_instructions_btn = Button {
+    let initial_instructions_btn = PanelButton {
         position: [260.0, 40.0],
         frame_size: [60.0, 60.0],
         off_color: GRAY_LIGHT,
         on_color: GRAY_LIGHT,
-        active_color: GRAY_COLOR,
+        active_color: Some(GRAY_COLOR),
         label_text: im_str!("INITIAL\nINSTRUC\nTIONS"),
         ..Default::default()
     };
 
-    let no_protn_btn = Button {
+    let no_protn_btn = PanelButton {
         position: [340.0, 40.0],
         frame_size: [60.0, 60.0],
         off_color: GREEN_DARK,
@@ -179,17 +178,17 @@ fn main() {
         ..Default::default()
     };
 
-    let clear_btn = Button {
+    let clear_btn = PanelButton {
         position: [420.0, 40.0],
         frame_size: [60.0, 60.0],
         off_color: GRAY_LIGHT,
         on_color: GRAY_LIGHT,
-        active_color: GRAY_COLOR,
+        active_color: Some(GRAY_COLOR),
         label_text: im_str!("CLEAR"),
         ..Default::default()
     };
 
-    let plotter_manual_btn = Button {
+    let plotter_manual_btn = PanelButton {
         position: [20.0, 40.0],
         frame_size: [60.0, 60.0],
         off_color: RED_DARK,
@@ -246,7 +245,7 @@ fn main() {
         ..Default::default()
     };
 
-    let manual_btn = Button {
+    let manual_btn = PanelButton {
         position: [340.0, 200.0],
         frame_size: [60.0, 60.0],
         off_color: RED_DARK,
@@ -255,11 +254,12 @@ fn main() {
         ..Default::default()
     };
 
-    let reset_btn = Button {
+    let reset_btn = PanelButton {
         position: [420.0, 200.0],
         frame_size: [60.0, 60.0],
         off_color: GREEN_DARK,
         on_color: GREEN_COLOR,
+        active_color: Some(GRAY_COLOR),
         label_text: im_str!("RESET"),
         ..Default::default()
     };
@@ -339,11 +339,11 @@ fn main() {
             }
 
             if off_btn.build(&ui, !state.power_on) && state.power_on {
-                println!("Power Off... frames={}, time={}, fps={}", frames, clock, frames as f64/clock);
                 state.power_on = false;
+                println!("Power Off... frames={}, time={}, fps={}", frames, clock, frames as f64/clock);
                 // Do the power off
                 state.no_protn = false;
-                state.digital_plotter_manual = false;
+                state.plotter_manual = false;
                 state.manual_state = false;
                 state.reset_state = false;
                 state.busy_glow = 0.0;
@@ -355,8 +355,8 @@ fn main() {
             }
 
             if on_btn.build(&ui, state.power_on) & !state.power_on {
-                println!("Power On... frames={}, time={}, fps={}", frames, clock, frames as f64/clock);
                 state.power_on = true;
+                println!("Power On... frames={}, time={}, fps={}", frames, clock, frames as f64/clock);
                 // Do the power on
             }
 
@@ -368,8 +368,8 @@ fn main() {
             }
 
             if no_protn_btn.build(&ui, state.no_protn) && state.power_on {
-                println!("No Protection...");
                 state.no_protn = !state.no_protn;
+                println!("No Protection... {}", if state.no_protn {"On"} else {"Off"});
                 // Switch the protection state
             }
 
@@ -390,14 +390,14 @@ fn main() {
             type_hold_lamp.build(&ui, state.type_hold_glow);
 
             if manual_btn.build(&ui, state.manual_state) && state.power_on {
-                println!("Manual...");
                 state.manual_state = !state.manual_state;
+                println!("Manual... {}", if state.manual_state {"On"} else {"Off"});
                 // Change global manual peripheral state
             }
 
             if reset_btn.build(&ui, state.reset_state) && state.power_on {
-                println!("Reset...");
                 state.reset_state = true;
+                println!("Reset... On");
             } else {
                 state.reset_state = false;
             }
@@ -422,9 +422,9 @@ fn main() {
         panel_b.build(&ui, || {
             let draw_list = ui.get_window_draw_list();
 
-            if plotter_manual_btn.build(&ui, state.digital_plotter_manual) && state.power_on {
-                println!("Digital Plotter Manual...");
-                state.digital_plotter_manual = !state.digital_plotter_manual;
+            if plotter_manual_btn.build(&ui, state.plotter_manual) && state.power_on {
+                state.plotter_manual = !state.plotter_manual;
+                println!("Digital Plotter Manual... {}", if state.plotter_manual {"On"} else {"Off"});
                 // Change digital plotter state
             }
 
@@ -451,7 +451,7 @@ fn main() {
             let clicks = demo_register.build(&ui, glow);
         });
 
-        // Pop the window background and font tokens
+        // Pop the window background and font styles
         ts.pop(&ui);
         tw.pop(&ui);
         our_font.pop(&ui);       // revert to default font

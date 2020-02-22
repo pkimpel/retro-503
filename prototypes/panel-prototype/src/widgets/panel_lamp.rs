@@ -37,7 +37,7 @@ impl<'a> Default for PanelLamp<'a> {
             on_color: GREEN_COLOR,
             border_color: GRAY_COLOR,
             border_shadow: BLACK_COLOR,
-            border_size: 6.0,
+            border_size: 4.0,
             border_rounding: 1.0,
             label_color: BLACK_COLOR,
             label_text
@@ -46,22 +46,23 @@ impl<'a> Default for PanelLamp<'a> {
 }
 
 impl<'a> PanelLamp<'a> {
-    pub fn build(&self, ui: &Ui, intensity: f32) {
+    pub fn build(&self, ui: &Ui, glow: f32) {
         let t0 = ui.push_style_vars(&[
             StyleVar::FrameRounding(self.border_rounding),
             StyleVar::FrameBorderSize(self.border_size)
         ]);
 
-        // Compute the lamp intensity
+        // Compute the lamp glow
         let mut color = self.off_color.clone();
         for t in color.iter_mut().zip(self.on_color.iter()) {
             let (c, on) = t;
-            *c += (*on - *c)*intensity;
+            *c += (*on - *c)*glow;
         }
 
         let t1 = ui.push_style_colors(&[
             (StyleColor::Text, self.label_color),
             (StyleColor::Border, self.border_color),
+            (StyleColor::BorderShadow, self.border_shadow),
             (StyleColor::Button, color),
             (StyleColor::ButtonActive, color),
             (StyleColor::ButtonHovered, color)

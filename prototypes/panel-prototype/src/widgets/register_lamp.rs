@@ -36,7 +36,6 @@ impl<'a> Default for RegisterLamp<'a> {
             colors: &super::NEON_LEVEL,
             active_color: GRAY_COLOR,
             border_color: BLACK_COLOR,
-            border_shadow: BLACK_COLOR,
             border_size: 0.0,
             border_rounding: 3.0,
             label_color: BLACK_COLOR,
@@ -46,7 +45,7 @@ impl<'a> Default for RegisterLamp<'a> {
 }
 
 impl<'a> RegisterLamp<'a> {
-    pub fn build(&self, ui: &Ui, intensity: f32) -> bool{
+    pub fn build(&self, ui: &Ui, glow: f32) -> bool{
         let t0 = ui.push_style_vars(&[
             StyleVar::FrameRounding(self.border_rounding),
             StyleVar::FrameBorderSize(self.border_size)
@@ -55,14 +54,13 @@ impl<'a> RegisterLamp<'a> {
         let t1 = ui.push_style_colors(&[
             (StyleColor::Text, self.label_color),
             (StyleColor::Border, self.border_color),
-            //(StyleColor::BorderShadow, self.border_shadow),
             (StyleColor::Button, color),
             (StyleColor::ButtonActive, self.active_color),
             (StyleColor::ButtonHovered, color)
             ]);
 
-        // Compute the lamp intensity
-        let level = (intensity*(self.colors.len()-1)).round() as usize;
+        // Compute the lamp glow
+        let level = (glow*(self.colors.len()-1)).round() as usize;
         let color = &self.colors[level];
 
         ui.set_cursor_pos(self.position);

@@ -22,7 +22,6 @@ pub struct RegisterDisplay<'a> {
     pub colors: &'a [Color4],
     pub active_color: Color4,
     pub border_color: Color4,
-    pub border_shadow: Color4,
     pub border_size: f32,
     pub border_rounding: f32,
     pub label_color: Color4,
@@ -39,7 +38,6 @@ impl<'a> Default for RegisterDisplay<'a> {
             colors: &super::NEON_LEVEL,
             active_color: GRAY_COLOR,
             border_color: BLACK_COLOR,
-            border_shadow: BLACK_COLOR,
             border_size: 0.0,
             border_rounding: 6.0,
             label_color: BLACK_COLOR,
@@ -58,7 +56,6 @@ impl<'a> RegisterDisplay<'a> {
         let t1 = ui.push_style_colors(&[
             (StyleColor::Text, self.label_color),
             (StyleColor::Border, self.border_color),
-            (StyleColor::BorderShadow, self.border_shadow),
             (StyleColor::ButtonActive, self.active_color)
             ]);
 

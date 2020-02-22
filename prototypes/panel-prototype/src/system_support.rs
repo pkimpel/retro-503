@@ -77,7 +77,7 @@ impl System {
                 data: include_bytes!("../resources/Roboto-Regular.ttf"),
                 size_pixels: font_size,
                 config: Some(FontConfig {
-                    rasterizer_multiply: 1.75,
+                    rasterizer_multiply: 1.5,
                     glyph_ranges: FontGlyphRanges::default(),
                     ..FontConfig::default()
                 }),

@@ -88,7 +88,7 @@ where T: Copy + Eq +
         let mut v = self.value;
 
         self.last_tick = this_tick;
-        for g in self.glow.iter_mut() {
+        for g in &mut self.glow {
             let b = v & T::from(1);
             if b == T::from(0) {
                 *g *= alpha1;

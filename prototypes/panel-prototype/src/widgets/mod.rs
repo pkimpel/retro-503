@@ -11,7 +11,7 @@
 *     Original version.
 ***********************************************************************/
 
-pub mod button;
+pub mod panel_button;
 pub mod panel_lamp;
 pub mod register_display;
 
@@ -29,7 +29,7 @@ pub static GRAY_DARK: Color4 = [0.25, 0.25, 0.25, 1.0];
 pub static GRAY_COLOR: Color4 = [0.5, 0.5, 0.5, 1.0];
 pub static GRAY_LIGHT: Color4 = [0.75, 0.75, 0.75, 1.0];
 pub static AMBER_COLOR: Color4 = [1.0, 0.8, 0.0, 1.0];
-pub static AMBER_DARK: Color4 = [0.6, 0.3, 0.0, 1.0];
+pub static AMBER_DARK: Color4 = [0.6, 0.4, 0.0, 1.0];
 
 pub static NEON_LEVEL: [Color4; 9] = [
     [0.2, 0.2,  0.2, 1.0],              // #333333 fully off
