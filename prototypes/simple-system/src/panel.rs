@@ -1,5 +1,5 @@
 /***********************************************************************
-* panel-prototype/src/main.rs
+* simple-server/src/panel.rs
 *   Prototype for development of an initial Elliott 503 operator
 *   control panel with pushbottons and lamps.
 * Copyright (C) 2020, Paul Kimpel.
@@ -7,16 +7,16 @@
 *       http://www.opensource.org/licenses/mit-license.php
 ************************************************************************
 * Modification log.
-* 2020-01-26  P.Kimpel
-*   Original version, from ui_one prototype.
+* 2020-03-12  P.Kimpel
+*   Original version, from panel-prototype.
 ***********************************************************************/
+
+use std::thread;
+use std::sync:mpsc;
 
 use chrono::{DateTime, Local, Timelike};
 use imgui::{im_str, Condition, StyleColor, StyleVar, Window, Ui};
 use imgui::{WindowDrawList};
-
-mod register;
-use register::{Register, EmulationClock};
 
 mod system_support;
 use system_support::{System};
@@ -29,80 +29,23 @@ use widgets::panel_lamp::PanelLamp;
 use widgets::register_display::RegisterDisplay;
 
 
-pub struct State {
+pub struct PanelState {
     pub power_on: bool,
-    pub last_clock: f64,
-    pub busy_glow: f32,
     pub no_protn: bool,
     pub plotter_manual: bool,
+    pub manual_state: bool
+}
+
+pub struct ProcessorState {
+    pub last_clock: f64,
+    pub busy_glow: f32,
     pub transfer_glow: f32,
     pub air_cond: bool,
     pub error_state: bool,
     pub tag_glow: f32,
     pub type_hold_glow: f32,
-    pub manual_state: bool,
-    pub reset_state: bool,
+    pub reset_state,
     pub backing_store_parity: bool
-}
-
-
-fn draw_clock(draw_list: &WindowDrawList) {
-    // Build the simple clock
-    const CENTER_X: f32 = 590.0;
-    const CENTER_Y: f32 = 180.0;
-    const CENTER: [f32; 2] = [CENTER_X, CENTER_Y];
-
-    let stamp: DateTime<Local> = Local::now();
-    let hour = (stamp.hour()%12) as f32;
-    let minute = stamp.minute() as f32;
-    let second = stamp.second() as f32;
-
-    draw_list.add_circle(CENTER, 42.0, GRAY_LIGHT)
-                .num_segments(24)
-                .thickness(2.0)
-                .build();
-
-    for h in 0..12 {
-        let angle = (h as f32 / 12.0 * 360.0).to_radians();
-        let (x, y) = angle.sin_cos();
-        let x1 = CENTER_X + x*40.0;
-        let y1 = CENTER_Y - y*40.0;
-        let x2 = CENTER_X + x*42.0;
-        let y2 = CENTER_Y - y*42.0;
-        draw_list.add_line([x1, y1], [x2, y2], BLACK_COLOR)
-                    .thickness(2.0)
-                    .build();
-    }
-
-    let angle = (((hour*60.0 + minute)*60.0 + second) / 43200.0 * 360.0).to_radians();
-    let (x, y) = angle.sin_cos();
-    let x = CENTER_X + x*25.0;
-    let y = CENTER_Y - y*25.0;
-    draw_list.add_line(CENTER, [x, y], GRAY_DARK)
-                .thickness(3.0)
-                .build();
-
-    let angle = ((minute*60.0 + second) / 3600.0 * 360.0).to_radians();
-    let (x, y) = angle.sin_cos();
-    let x = CENTER_X + x*35.0;
-    let y = CENTER_Y - y*35.0;
-    draw_list.add_line(CENTER, [x, y], GRAY_DARK)
-                .thickness(2.0)
-                .build();
-
-    let angle = (second / 60.0 * 360.0).to_radians();
-    let (x, y) = angle.sin_cos();
-    let x = CENTER_X + x*40.0;
-    let y = CENTER_Y - y*40.0;
-    draw_list.add_line(CENTER, [x, y], RED_COLOR)
-                .thickness(1.0)
-                .build();
-
-    draw_list.add_circle(CENTER, 4.0, BLACK_COLOR)
-                .num_segments(8)
-                .filled(true)
-                .build();
-
 }
 
 fn main() {
@@ -111,21 +54,26 @@ fn main() {
     let mut timer: Register<u32> = Register::new(30, &eclock);
     timer.set(1234567);
 
-    let mut state = State {
+    let mut state = PanelState {
         power_on: false,
-        last_clock: 0.0,
-        busy_glow: 0.0,
         no_protn: false,
         plotter_manual: false,
+        manual_state: false,
+    };
+
+    let mut processor = ProcessorState {
+        last_clock: 0.0,
+        busy_glow: 0.0,
         transfer_glow: 0.0,
         air_cond: false,
         error_state: false,
         tag_glow: 0.0,
         type_hold_glow: 0.0,
-        manual_state: false,
         reset_state: false,
         backing_store_parity: false
     };
+
+    let processor = Arc::new(Mutex::new(processor));
 
     // Instantiate the System infrastructure and default font
     let system = System::new(file!());
@@ -278,6 +226,27 @@ fn main() {
         ..Default::default()
     };
 
+    let (event_tx, event_rx) = mpsc::channel();
+    let stream = TCPStream::connect("localhost:50300");
+    let (proc_tx, proc_rx) = (&stream, &stream);
+
+    fn event_sender(event_rx: Sender, proc_tx: TCPStream) -> Result<(), Err> {
+        Ok(())
+    }
+
+    fn proc_receiver(proc_rx: TCPStream) -> Result<(), Err> {
+        Ok(())
+    }
+
+    // Start the communication threads
+    let ev_thread = thread::spawn(move || {
+        event_sender(event_rx, proc_tx)
+    });
+
+    let proc_thread = thread::spawn(move || {
+        proc_receiver(proc_rx)
+    })
+
     // Start the System event loop
     system.main_loop(|_run, ui| {
         let frames = ui.frame_count();
@@ -324,18 +293,6 @@ fn main() {
                 state.transfer_glow = state.transfer_glow*0.84 + (ticks*3456.0).fract()*0.16;
                 state.tag_glow = state.tag_glow*0.84 + (ticks*4567.0).fract()*0.16;
                 state.type_hold_glow = state.type_hold_glow*0.84 + (ticks*7654.0).fract()*0.16;
-            }
-
-            // Define the blinking circle
-            if state.power_on && phase > 0 {
-                let (x, y) = angle.sin_cos();
-                let x = (230.0 + x*100.0) as f32;
-                let y = (170.0 - y*100.0) as f32;
-                draw_list.add_circle([x, y], 8.0, RED_COLOR)
-                         .filled(true)
-                         .num_segments(16)
-                         .thickness(1.0)
-                         .build();
             }
 
             if off_btn.build(&ui, !state.power_on) && state.power_on {
@@ -429,8 +386,6 @@ fn main() {
             }
 
             backing_store_lamp.build(&ui, if state.backing_store_parity {1.0} else {0.0});
-
-            draw_clock(&draw_list);
         });
 
         // Create the Panel C window
@@ -456,4 +411,7 @@ fn main() {
         tw.pop(&ui);
         our_font.pop(&ui);       // revert to default font
     });
+
+    ev_thread.join().unwrap();
+    proc_thread.join().unwrap();
 }
