@@ -74,7 +74,7 @@ impl System {
         ]);
         let alt_font = imgui.fonts().add_font(&[
             FontSource::TtfData {           // Roboto Regular
-                data: include_bytes!("../resources/Roboto-Regular.ttf"),
+                data: include_bytes!("../../resources/Roboto-Regular.ttf"),
                 size_pixels: font_size,
                 config: Some(FontConfig {
                     rasterizer_multiply: 1.5,

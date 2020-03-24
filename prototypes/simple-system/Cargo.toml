@@ -7,7 +7,9 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+ctrlc = "3.1"
 chrono = "0.4"
+bincode = "1.2"
 glium = { version = "0.25", default-features = true }
 image = "0.22"
 imgui = "0.2.1"

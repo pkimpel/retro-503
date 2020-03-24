@@ -64,7 +64,7 @@ impl<'a> RegisterDisplay<'a> {
         let mut x = self.position[0] + increment*(glow.len()-1) as f32;
         let y = self.position[1];
 
-        for (i, g) in glow.iter().enumerate() {
+        for g in glow.iter() {
             let level = (*g*(self.colors.len()-1) as f32).round() as usize;
             let color = self.colors[level];
             let t2 = ui.push_style_colors(&[
