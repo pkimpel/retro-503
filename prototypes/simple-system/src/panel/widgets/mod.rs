@@ -10,6 +10,7 @@
 * 2020-02-07  P.Kimpel
 *     Original version.
 ***********************************************************************/
+#![allow(dead_code)]
 
 pub mod panel_button;
 pub mod panel_lamp;

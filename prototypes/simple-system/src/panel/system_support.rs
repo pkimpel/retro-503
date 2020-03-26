@@ -18,6 +18,9 @@ use imgui_glium_renderer::Renderer;
 use imgui_winit_support::{HiDpiMode, WinitPlatform};
 use std::time::Instant;
 
+const WINDOW_WIDTH: f64 = 540.0;
+const WINDOW_HEIGHT: f64 = 230.0;
+
 pub struct System {
     pub events_loop: glutin::EventsLoop,
     pub display: glium::Display,
@@ -41,7 +44,7 @@ impl System {
         let context = glutin::ContextBuilder::new().with_vsync(true);
         let builder = glutin::WindowBuilder::new()
             .with_title(title.to_owned())
-            .with_dimensions(glutin::dpi::LogicalSize::new(660f64, 400f64));
+            .with_dimensions(glutin::dpi::LogicalSize::new(WINDOW_WIDTH, WINDOW_HEIGHT));
 
         // Create the Display object to drive OpenGL
         let display = Display::new(builder, context, &events_loop)
