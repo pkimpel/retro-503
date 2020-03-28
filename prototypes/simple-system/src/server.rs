@@ -29,13 +29,13 @@ use register::{Register, FlipFlop, EmulationClock};
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
-const SERVER_IP_ADDR: &str = "localhost:503";
 const SERVER_TIMEOUT: u64 = 5;          // sec
 const TIMER_PERIOD: f64 = 7.2e-6;       // sec
 
 pub struct ServerState {
     pub last_clock: f64,
     pub eclock: Arc<EmulationClock>,
+    pub reset_countdown: u32,
     // Push-push (toggle) button states
     pub power_on: bool,
     pub no_protn: bool,
@@ -59,6 +59,7 @@ fn send_status(writer: &mut BufWriter<TcpStream>, state: &ServerState) -> Result
     message_frame::frame_message(writer, "POWER", &serialize(&state.power_on)?)?;
     message_frame::frame_message(writer, "NOPRO", &serialize(&state.no_protn)?)?;
     message_frame::frame_message(writer, "MANL", &serialize(&state.manual_state)?)?;
+    message_frame::frame_message(writer, "RESET", &serialize(&state.reset_state)?)?;
     message_frame::frame_message(writer, "PLTMN", &serialize(&state.plotter_manual)?)?;
     message_frame::frame_message(writer, "XFER", &serialize(&state.transfer_glow)?)?;
     message_frame::frame_message(writer, "AC", &serialize(&state.air_cond_glow)?)?;
@@ -107,6 +108,12 @@ fn panel_receiver(stream: TcpStream, _peer_addr: SocketAddr, run_flag: Arc<Atomi
                 match std::str::from_utf8(code) {
                     Ok("STAT") => {
                         //println!("panel_receiver STAT");
+                        if state.reset_countdown > 0 {
+                            state.reset_countdown -= 1;
+                            if state.reset_countdown == 0 {
+                                state.reset_state = false;
+                            }
+                        }
                         send_status(&mut writer, &state).expect("panel_receiver error sending status");
                     }
                     Ok("INIT") => {
@@ -114,24 +121,27 @@ fn panel_receiver(stream: TcpStream, _peer_addr: SocketAddr, run_flag: Arc<Atomi
                     }
                     Ok("CLEAR") => {
                         println!("panel_receiver CLEAR");
+                        state.a_reg.set(0);
                     }
                     Ok("RESET") => {
                         println!("panel_receiver RESET");
+                        state.reset_state = true;
+                        state.reset_countdown = 15;
                     }
                     Ok("MANL") => {
                         let on_off = deserialize(payload)?;
-                        state.manual_state = on_off;
                         println!("panel_receiver MANL {}", on_off);
+                        state.manual_state = on_off;
                     }
                     Ok("PLTMN") => {
                         let on_off = deserialize(payload)?;
-                        state.plotter_manual = on_off;
                         println!("panel_receiver PLTMN {}", on_off);
+                        state.plotter_manual = on_off;
                     }
                     Ok("NOPRO") => {
                         let on_off = deserialize(payload)?;
-                        state.no_protn = on_off;
                         println!("panel_receiver NOPRO {}", on_off);
+                        state.no_protn = on_off;
                     }
                     Ok("POWER") => {
                         let on_off = deserialize(payload)?;
@@ -154,11 +164,11 @@ fn panel_receiver(stream: TcpStream, _peer_addr: SocketAddr, run_flag: Arc<Atomi
 
         if !run_flag.load(Ordering::Relaxed) {
             running = false;
-            message_frame::frame_message(&mut writer, "SHUT", &Vec::new())
-                .expect("Error sending ShutDown on panel_receiver exit");
         }
     }
-
+    
+    message_frame::frame_message(&mut writer, "SHUT", &Vec::new())
+        .expect("Error sending ShutDown on panel_receiver exit");
     Ok(())
 }
 
@@ -193,26 +203,36 @@ fn change_power(mut writer: &mut BufWriter<TcpStream>, state: &mut ServerState, 
 
 fn simple_cpu(running: Arc<AtomicBool>, state: Arc<Mutex<ServerState>>) {
     
-    while running.load(Ordering::Relaxed) {
-        let mut state = state.lock().unwrap();
-
-        for _ in 0..1000 {
-            let count = state.a_reg.read();
-            state.a_reg.add(1);
-            state.busy_ff.set(count & 1 == 0);
-            state.eclock.advance(TIMER_PERIOD);
+    loop {
+        if !running.load(Ordering::Relaxed) {
+            break;
+        } else {
+            let mut state = state.lock().unwrap();
+            if !state.power_on {
+                drop(state);
+                thread::sleep(Duration::from_secs(2));
+            } else {
+                for _ in 0..500 {
+                    let count = state.a_reg.read();
+                    state.a_reg.add(1);
+                    state.busy_ff.set(count & 1 == 0);
+                    state.eclock.advance(TIMER_PERIOD);
+                }
+                
+                drop(state);
+                thread::sleep(Duration::from_millis((TIMER_PERIOD*1e6) as u64));
+            }
         }
-
-        thread::sleep(Duration::from_millis((TIMER_PERIOD*1e6) as u64));
     }
 }
 
-pub fn main() -> Result<()> {
+pub fn main(socket_addr: &str) -> Result<()> {
     let eclock = Arc::new(EmulationClock::new(0.0));
 
     let mut state = ServerState {
         last_clock: 0.0,
         eclock: eclock.clone(),
+        reset_countdown: 0,
         power_on: false,
         no_protn: false,
         plotter_manual: false,
@@ -240,12 +260,19 @@ pub fn main() -> Result<()> {
     }).expect("Error establishing Ctrl-C handler");
 
     // Start listening for panel connections
-    let listener = TcpListener::bind(SERVER_IP_ADDR)
+    let listener = TcpListener::bind(socket_addr)
                    .expect("Failed to bind TcpListener");
     listener.set_nonblocking(true)
             .expect("Error setting non_blocking on TcpListener");
-    println!("Listening on {}", SERVER_IP_ADDR);
+    println!("Listening on {}", socket_addr);
 
+    // Spawn the simplistic processor
+    let state = state_ref.clone();
+    let run_flag = running.clone();
+    let cpu = thread::spawn(move || {
+        simple_cpu(run_flag, state)
+    });
+    
     while running.load(Ordering::Relaxed) {
         // Get the next incoming TCP connection
         match listener.accept() {
@@ -269,17 +296,6 @@ pub fn main() -> Result<()> {
                     panel_receiver(stream, peer_addr, run_flag, state)
                 });
 
-                // Spawn the simplistic processor
-                let state = state_ref.clone();
-                let run_flag = running.clone();
-                let cpu = thread::spawn(move || {
-                    simple_cpu(run_flag, state)
-                });
-
-                match cpu.join() {
-                    Ok(_) => println!("server CPU thread terminated normally"),
-                    Err(e) => println!("server CPU thread error {:?}", e)                    
-                }
                 match receiver.join() {
                     Ok(_) => println!("server panel_receiver thread terminated normally"),
                     Err(e) => println!("server receiver thread error {:?}", e)
@@ -288,5 +304,9 @@ pub fn main() -> Result<()> {
         }
     }
 
+    match cpu.join() {
+        Ok(_) => println!("server CPU thread terminated normally"),
+        Err(e) => println!("server CPU thread error {:?}", e)                    
+    }
     Ok(())
 }

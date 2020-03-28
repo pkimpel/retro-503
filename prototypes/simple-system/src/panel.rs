@@ -32,7 +32,6 @@ use widgets::panel_button::PanelButton;
 use widgets::panel_lamp::PanelLamp;
 use widgets::register_display::RegisterDisplay;
 
-const SERVER_IP_ADDR: &str = "localhost:503";
 const STATUS_PERIOD: f64 = 1.0/20.0;    // sec
 
 pub const FRAME_START: [u8;2] = [0x5A, 0x5A];
@@ -178,6 +177,9 @@ fn proc_receiver(mut reader: BufReader<TcpStream>, state: Arc<Mutex<PanelState>>
                     Ok("PLTMN") => {
                         state.plotter_manual = deserialize(payload)?;
                     }
+                    Ok("RESET") => {
+                        state.reset_state = deserialize(payload)?;
+                    }
                     Ok("POWER") => {
                         state.power_on = deserialize(payload)?;
                     }
@@ -189,6 +191,7 @@ fn proc_receiver(mut reader: BufReader<TcpStream>, state: Arc<Mutex<PanelState>>
                     }
                     Ok("SHUT") => {
                         println!("Received SHUT from Server");
+                        state.power_on = false;
                         running = false;
                     }
                     Ok(bad_code) => {
@@ -205,7 +208,7 @@ fn proc_receiver(mut reader: BufReader<TcpStream>, state: Arc<Mutex<PanelState>>
     Ok(())
 }
 
-pub fn main() -> Result<()> {
+pub fn main(server_addr: &str) -> Result<()> {
     let state = PanelState {
         next_status_clock: 0.0,
         status_request_count: 0,
@@ -375,13 +378,14 @@ pub fn main() -> Result<()> {
     };
 
     let a_reg = RegisterDisplay {
-        position: [10.0, 4.0],
+        position: [42.0, 9.0],
         ..Default::default()
     };
 
     let (event_tx, event_rx) = mpsc::channel::<Event>();
-    let stream = TcpStream::connect(SERVER_IP_ADDR)
+    let stream = TcpStream::connect(server_addr)
                            .expect("Failed to connect to core server");
+    println!("Connected to {} on {}", stream.peer_addr().unwrap(), stream.local_addr().unwrap());
 
     // Start the communication threads
     let writer = BufWriter::new(stream.try_clone().unwrap());
@@ -408,6 +412,7 @@ pub fn main() -> Result<()> {
             println!("Panel main window closed");
             event_tx.send(Event::ShutDown)
                     .expect("Error sending ShutDown after main window close");
+            return;
         }
 
         // Set the current font and OS-level window background color
@@ -441,20 +446,6 @@ pub fn main() -> Result<()> {
             if off_btn.build(&ui, !state.power_on) && state.power_on {
                 println!("Power Off... frames={}, time={}, fps={}", frames, clock, frames as f64/clock);
                 event_tx.send(Event::PowerChange(false)).unwrap();
-                /***************
-                // Do the power off
-                state.no_protn = false;
-                state.plotter_manual = false;
-                state.manual_state = false;
-                state.reset_state = false;
-                state.busy_glow = 0.0;
-                state.transfer_glow = 0.0;
-                state.air_cond_glow = 0.0;
-                state.error_glow = 0.0;
-                state.tag_glow = 0.0;
-                state.type_hold_glow = 0.0;
-                state.bs_parity_glow = 0.0;
-                ****************/
             }
 
             if on_btn.build(&ui, state.power_on) && !state.power_on {
@@ -521,7 +512,7 @@ pub fn main() -> Result<()> {
             .title_bar(false)
             .scrollable(false)
             .position([10.0, 200.0], Condition::FirstUseEver)
-            .size([520.0, 15.0], Condition::FirstUseEver);
+            .size([520.0, 30.0], Condition::FirstUseEver);
 
         // Build our Panel C window and its inner widgets in the closure
         panel_c.build(&ui, || {
@@ -536,7 +527,7 @@ pub fn main() -> Result<()> {
                     //println!("Requesting Server status");
                     event_tx.send(Event::RequestStatus).unwrap();
                     state.next_status_clock = clock + STATUS_PERIOD;
-            }
+                }
             }
         }
 

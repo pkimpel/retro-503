@@ -19,7 +19,7 @@ use imgui_winit_support::{HiDpiMode, WinitPlatform};
 use std::time::Instant;
 
 const WINDOW_WIDTH: f64 = 540.0;
-const WINDOW_HEIGHT: f64 = 230.0;
+const WINDOW_HEIGHT: f64 = 240.0;
 
 pub struct System {
     pub events_loop: glutin::EventsLoop,
