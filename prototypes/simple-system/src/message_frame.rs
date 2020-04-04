@@ -48,13 +48,15 @@ pub fn frame_message(writer: &mut BufWriter<TcpStream>, code: &str, payload: &Ve
 pub fn unframe_message<'a> (reader: &mut BufReader<TcpStream>, buf: &'a mut Vec<u8>) ->
         Result<(&'a [u8], &'a [u8])> {
     /* Receives a message from reader into buf and unframes it, returning
-    Result<(code, payload>), where code and payload are slices within buf.
-    code is the message code and payload is the raw message data that will usually
-    need to be deserialized by the caller */
+    Result<(code, payload)>, where code and payload are slices within buf.
+    Note that both values are raw u8 binary data: code is the message code 
+    that will need to be converted to UTF8 by the caller, and payload is the
+    raw message data that will usually need to be deserialized by the caller */
 
+    let frame_len = FRAME_START.len();
+    let code_x = frame_len + 1;         // account for code-length size
     loop {
-        let frame_len = FRAME_START.len();
-        let code_x = frame_len + 1;
+        // Read the starting sentinel and code-length bytes
         reader.read_exact(&mut buf[0..code_x])?;
         if !buf.starts_with(&FRAME_START) {
             println!("unframe_message invalid frame start={:?}", &buf[0..frame_len]);
@@ -66,6 +68,7 @@ pub fn unframe_message<'a> (reader: &mut BufReader<TcpStream>, buf: &'a mut Vec<
                 buf.resize(payload_x + 32, 0);
             }
 
+            // Read the code and payload-length bytes
             reader.read_exact(&mut buf[code_x..payload_x])?;
             let payload_len = ((buf[payload_len_x] as usize) << 8) | buf[payload_len_x+1] as usize;
             let frame_end_x = payload_x + payload_len;
@@ -74,11 +77,13 @@ pub fn unframe_message<'a> (reader: &mut BufReader<TcpStream>, buf: &'a mut Vec<
                 buf.resize(buf_len + 32, 0);
             }
 
+            // Read the payload and ending sentinel bytes
             reader.read_exact(&mut buf[payload_x..buf_len])?;
             if !buf[frame_end_x..].starts_with(&FRAME_END) {
                 println!("unframe_message invalid frame end={:?}", &buf[0..buf_len]);
                 return Err("Invalid frame ending sentinel".into());
             } else {
+                // All is copacetic: construct the sub-slices and return
                 let code = &buf[code_x..payload_len_x];
                 let payload = &buf[payload_x..frame_end_x];
                 return Ok((code, payload));

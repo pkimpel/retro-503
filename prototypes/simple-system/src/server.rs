@@ -94,7 +94,7 @@ fn panel_receiver(stream: TcpStream, _peer_addr: SocketAddr, run_flag: Arc<Atomi
                             println!("TcpStream timeout");
                         }
                         std::io::ErrorKind::UnexpectedEof => {
-                            println!("panel_receiver UnexpectedEof on TcpStream");
+                            println!("receiver UnexpectedEof on TcpStream");
                             running = false;
                         }
                         _ => {return Err(e.into())}
@@ -107,56 +107,56 @@ fn panel_receiver(stream: TcpStream, _peer_addr: SocketAddr, run_flag: Arc<Atomi
                 let mut state = state.lock().unwrap();
                 match std::str::from_utf8(code) {
                     Ok("STAT") => {
-                        //println!("panel_receiver STAT");
+                        //println!("receiver STAT");
                         if state.reset_countdown > 0 {
                             state.reset_countdown -= 1;
                             if state.reset_countdown == 0 {
                                 state.reset_state = false;
                             }
                         }
-                        send_status(&mut writer, &state).expect("panel_receiver error sending status");
+                        send_status(&mut writer, &state).expect("receiver error sending status");
                     }
                     Ok("INIT") => {
-                        println!("panel_receiver INIT");
+                        println!("receiver INIT");
                     }
                     Ok("CLEAR") => {
-                        println!("panel_receiver CLEAR");
+                        println!("receiver CLEAR");
                         state.a_reg.set(0);
                     }
                     Ok("RESET") => {
-                        println!("panel_receiver RESET");
+                        println!("receiver RESET");
                         state.reset_state = true;
                         state.reset_countdown = 15;
                     }
                     Ok("MANL") => {
                         let on_off = deserialize(payload)?;
-                        println!("panel_receiver MANL {}", on_off);
+                        println!("receiver MANL {}", on_off);
                         state.manual_state = on_off;
                     }
                     Ok("PLTMN") => {
                         let on_off = deserialize(payload)?;
-                        println!("panel_receiver PLTMN {}", on_off);
+                        println!("receiver PLTMN {}", on_off);
                         state.plotter_manual = on_off;
                     }
                     Ok("NOPRO") => {
                         let on_off = deserialize(payload)?;
-                        println!("panel_receiver NOPRO {}", on_off);
+                        println!("receiver NOPRO {}", on_off);
                         state.no_protn = on_off;
                     }
                     Ok("POWER") => {
                         let on_off = deserialize(payload)?;
-                        println!("panel_receiver POWER {}", on_off);
+                        println!("receiver POWER {}", on_off);
                         change_power(&mut writer, &mut state, &on_off);
                     }
                     Ok("SHUT") => {
                         running = false;
-                        println!("panel_receiver SHUT");
+                        println!("receiver SHUT");
                     }
                     Ok(bad_code) => {
-                        println!("panel_receiver unrecognized message code {}", bad_code);
+                        println!("receiver unrecognized message code {}", bad_code);
                     }
                     Err(e) => {
-                        println!("panel_receiver corrupt message code {:?} -- {}", code, e);
+                        println!("receiver corrupt message code {:?} -- {}", code, e);
                     }
                 }
             }
@@ -164,11 +164,11 @@ fn panel_receiver(stream: TcpStream, _peer_addr: SocketAddr, run_flag: Arc<Atomi
 
         if !run_flag.load(Ordering::Relaxed) {
             running = false;
-        }
+            message_frame::frame_message(&mut writer, "KILL", &Vec::new())
+                    .expect("Error sending KILL on receiver exit");
+            }
     }
     
-    message_frame::frame_message(&mut writer, "SHUT", &Vec::new())
-        .expect("Error sending ShutDown on panel_receiver exit");
     Ok(())
 }
 
@@ -297,7 +297,7 @@ pub fn main(socket_addr: &str) -> Result<()> {
                 });
 
                 match receiver.join() {
-                    Ok(_) => println!("server panel_receiver thread terminated normally"),
+                    Ok(_) => println!("server receiver thread terminated normally"),
                     Err(e) => println!("server receiver thread error {:?}", e)
                 }
             }

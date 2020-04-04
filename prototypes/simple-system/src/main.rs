@@ -27,6 +27,6 @@ fn main() -> Result<()> {
         (Some("panel"), Some(addr), None) => panel::main(addr),
         (Some("server"), None, None) => server::main(DEFAULT_SOCKET),
         (Some("server"), Some(addr), None) => server::main(addr),
-        _ => Err("Usage: simple-server client|server [socket-addr]".into()),
+        _ => Err("Usage: simple-server panel|server [socket-addr]".into()),
     }
 }
