@@ -13,14 +13,12 @@
 
 use std::thread;
 use std::sync::{Arc, mpsc, Mutex, atomic::{AtomicBool, Ordering}};
-use std::io::{BufReader, BufWriter};
-use std::net::{TcpStream};
 use bincode::{serialize, deserialize};
 
 //use chrono::{DateTime, Local, Timelike};
 use imgui::{im_str, Condition, StyleColor, StyleVar, Window, Ui};
 
-use crate::message_frame;
+use crate::message_frame::{MessageSocket, MessageSender, MessageReceiver};
 
 mod system_support;
 use system_support::{System};
@@ -373,7 +371,7 @@ impl<'a> PanelC<'a> {
 
 // Thread functions
 
-fn event_sender(event_rx: mpsc::Receiver<Event>, mut writer: BufWriter<TcpStream>) -> Result<()> {
+fn event_sender(event_rx: mpsc::Receiver<Event>, mut sender: MessageSender) -> Result<()> {
     /* Frame and send an event message to the core server based on the value
     of event_rx */
     use Event::*;
@@ -381,31 +379,31 @@ fn event_sender(event_rx: mpsc::Receiver<Event>, mut writer: BufWriter<TcpStream
     for ev in event_rx {
         match ev {
             RequestStatus => {
-                message_frame::frame_message(&mut writer, "STAT", &Vec::new())?;
+                sender.send_sync("STAT", &Vec::new())?;
             }
             PowerChange(state) => {
-                message_frame::frame_message(&mut writer, "POWER", &serialize(&state)?)?;
+                sender.send_sync("POWER", &serialize(&state)?)?;
             }
             InitialInstructions => {
-                message_frame::frame_message(&mut writer, "INIT", &Vec::new())?;
+                sender.send_sync("INIT", &Vec::new())?;
             }
             NoProtection(state) => {
-                message_frame::frame_message(&mut writer, "NOPRO", &serialize(&state)?)?;
+                sender.send_sync("NOPRO", &serialize(&state)?)?;
             }
             Clear => {
-                message_frame::frame_message(&mut writer, "CLEAR", &Vec::new())?;
+                sender.send_sync("CLEAR", &Vec::new())?;
             }
             Manual(state) => {
-                message_frame::frame_message(&mut writer, "MANL", &serialize(&state)?)?;
+                sender.send_sync("MANL", &serialize(&state)?)?;
             }
             Reset => {
-                message_frame::frame_message(&mut writer, "RESET", &Vec::new())?;
+                sender.send_sync("RESET", &Vec::new())?;
             }
             PlotterManual(state) => {
-                message_frame::frame_message(&mut writer, "PLTMN", &serialize(&state)?)?;
+                sender.send_sync("PLTMN", &serialize(&state)?)?;
             }
             ShutDown => {
-                message_frame::frame_message(&mut writer, "SHUT", &Vec::new())?;
+                sender.send_sync("SHUT", &Vec::new())?;
                 break;
             }
             Kill => {
@@ -417,7 +415,7 @@ fn event_sender(event_rx: mpsc::Receiver<Event>, mut writer: BufWriter<TcpStream
     Ok(())
 }
 
-fn core_receiver(mut reader: BufReader<TcpStream>, event_tx: mpsc::Sender<Event>, 
+fn core_receiver(mut receiver: MessageReceiver, event_tx: mpsc::Sender<Event>, 
                 exit_flag: Arc<AtomicBool>, state: Arc<Mutex<PanelState>>) -> Result<()> {
     /* Receive and process messages from the core server task */
 
@@ -425,26 +423,29 @@ fn core_receiver(mut reader: BufReader<TcpStream>, event_tx: mpsc::Sender<Event>
     let mut running = true;
 
     while running {
-        match message_frame::unframe_message(&mut reader, &mut buf) {
+        match receiver.receive_sync(&mut buf) {
             Err(e) => {
-                if let Some(ie) = e.downcast_ref::<std::io::Error>() {
-                    match ie.kind() {
-                        std::io::ErrorKind::TimedOut | 
-                        std::io::ErrorKind::WouldBlock => {
-                            println!("TcpStream timeout");
-                        }
-                        std::io::ErrorKind::UnexpectedEof => {
-                            println!("panel_receiver UnexpectedEof on TcpStream");
-                            running = false;
-                            match event_tx.send(Event::Kill) {
-                                Ok(_) => {}
-                                Err(_) => println!("panel_receiver unable to send internal Kill")
+                match e.downcast_ref::<std::io::Error>() {
+                    Some(ie) => {
+                        match ie.kind() {
+                            std::io::ErrorKind::TimedOut | 
+                            std::io::ErrorKind::WouldBlock => {
+                                println!("TcpStream timeout");
                             }
+                            std::io::ErrorKind::UnexpectedEof => {
+                                println!("panel_receiver UnexpectedEof on TcpStream");
+                                running = false;
+                                match event_tx.send(Event::Kill) {
+                                    Ok(_) => {}
+                                    Err(_) => println!("panel_receiver unable to send internal Kill")
+                                }
+                            }
+                            _ => {return Err(e.into())}
                         }
-                        _ => {return Err(e.into())}
                     }
-                } else {
-                    return Err(e.into());
+                    None => {
+                        return Err(e)
+                    }
                 }
             }
             Ok((code, payload)) => {
@@ -555,14 +556,14 @@ pub fn main(server_addr: &str) -> Result<()> {
     // Create the internal event channel and TCP connection
 
     let (event_tx, event_rx) = mpsc::channel::<Event>();
-    let stream = TcpStream::connect(server_addr)
+    let socket = MessageSocket::connect_sync(server_addr)
             .expect(&format!("Failed to connect to core server on {}", server_addr)[..]);
-    println!("Connected to {} on {}", stream.peer_addr().unwrap(), stream.local_addr().unwrap());
+    println!("Connected to {} on {}", socket.peer_addr().unwrap(), socket.local_addr().unwrap());
 
     // Start the communication threads
     
-    let writer = BufWriter::new(stream.try_clone().unwrap());
-    let reader = BufReader::new(stream);
+    let sender = socket.sender();
+    let receiver = socket.receiver();
 
     let exit_flag = Arc::new(AtomicBool::new(false));
     let event_tx_dup = event_tx.clone();
@@ -570,11 +571,11 @@ pub fn main(server_addr: &str) -> Result<()> {
     let state_dup = state.clone();
     
     let core_thread = thread::spawn(move || {
-        core_receiver(reader, event_tx_dup, exit_flag_dup, state_dup)
+        core_receiver(receiver, event_tx_dup, exit_flag_dup, state_dup)
     });
 
     let ev_thread = thread::spawn(move || {
-        event_sender(event_rx, writer)
+        event_sender(event_rx, sender)
     });
 
     event_tx.send(Event::RequestStatus).unwrap();   // request initial server status
@@ -586,7 +587,7 @@ pub fn main(server_addr: &str) -> Result<()> {
 
     // Start the System event loop
 
-    system.main_loop(|run, ui| {
+    system.main_loop(move |run, ui| {
         
         // Check to see if the main window has been closed
         if !*run {

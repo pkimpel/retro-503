@@ -53,7 +53,7 @@ impl<'a> PanelLamp<'a> {
         ]);
 
         // Compute the lamp glow
-        let mut color = self.off_color.clone();
+        let mut color = self.off_color;
         for t in color.iter_mut().zip(self.on_color.iter()) {
             let (c, on) = t;
             *c += (*on - *c)*glow;

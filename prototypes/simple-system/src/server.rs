@@ -15,14 +15,12 @@
 use std::thread;
 use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::io::{BufReader, BufWriter};
-use std::net::{TcpListener, TcpStream, SocketAddr};
 use std::time::Duration;
 
 use bincode::{serialize, deserialize};
 use ctrlc;
 
-use crate::message_frame;
+use crate::message_frame::{MessageListener, MessageSender, MessageReceiver};
 
 mod register;
 use register::{Register, FlipFlop, EmulationClock};
@@ -54,53 +52,51 @@ pub struct ServerState {
     pub a_reg: Register<u32>
 }
 
-fn send_status(writer: &mut BufWriter<TcpStream>, state: &ServerState) -> Result<()> {
+fn send_status(sender: &mut MessageSender, state: &ServerState) -> Result<()> {
 
-    message_frame::frame_message(writer, "POWER", &serialize(&state.power_on)?)?;
-    message_frame::frame_message(writer, "NOPRO", &serialize(&state.no_protn)?)?;
-    message_frame::frame_message(writer, "MANL", &serialize(&state.manual_state)?)?;
-    message_frame::frame_message(writer, "RESET", &serialize(&state.reset_state)?)?;
-    message_frame::frame_message(writer, "PLTMN", &serialize(&state.plotter_manual)?)?;
-    message_frame::frame_message(writer, "XFER", &serialize(&state.transfer_glow)?)?;
-    message_frame::frame_message(writer, "AC", &serialize(&state.air_cond_glow)?)?;
-    message_frame::frame_message(writer, "ERROR", &serialize(&state.error_glow)?)?;
-    message_frame::frame_message(writer, "TAG", &serialize(&state.tag_glow)?)?;
-    message_frame::frame_message(writer, "THOLD", &serialize(&state.type_hold_glow)?)?;
-    message_frame::frame_message(writer, "BSPAR", &serialize(&state.bs_parity_glow)?)?;
-    message_frame::frame_message(writer, "BUSY", &serialize(&state.busy_ff.read_glow())?)?;
-    message_frame::frame_message(writer, "A", &serialize(&state.a_reg.read_glow())?)?;
-    message_frame::frame_message(writer, "ESTAT", &Vec::new())?;
+    sender.send_sync("POWER", &serialize(&state.power_on)?)?;
+    sender.send_sync("NOPRO", &serialize(&state.no_protn)?)?;
+    sender.send_sync("MANL", &serialize(&state.manual_state)?)?;
+    sender.send_sync("RESET", &serialize(&state.reset_state)?)?;
+    sender.send_sync("PLTMN", &serialize(&state.plotter_manual)?)?;
+    sender.send_sync("XFER", &serialize(&state.transfer_glow)?)?;
+    sender.send_sync("AC", &serialize(&state.air_cond_glow)?)?;
+    sender.send_sync("ERROR", &serialize(&state.error_glow)?)?;
+    sender.send_sync("TAG", &serialize(&state.tag_glow)?)?;
+    sender.send_sync("THOLD", &serialize(&state.type_hold_glow)?)?;
+    sender.send_sync("BSPAR", &serialize(&state.bs_parity_glow)?)?;
+    sender.send_sync("BUSY", &serialize(&state.busy_ff.read_glow())?)?;
+    sender.send_sync("A", &serialize(&state.a_reg.read_glow())?)?;
+    sender.send_sync("ESTAT", &Vec::new())?;
     Ok(())
 }
 
-fn panel_receiver(stream: TcpStream, _peer_addr: SocketAddr, run_flag: Arc<AtomicBool>, 
-        state: Arc<Mutex<ServerState>>) -> Result<()> {
+fn panel_receiver(mut receiver: MessageReceiver, mut sender: MessageSender, 
+        run_flag: Arc<AtomicBool>, state: Arc<Mutex<ServerState>>) -> Result<()> {
 
-    stream.set_read_timeout(Some(Duration::from_secs(SERVER_TIMEOUT)))
-          .expect("Error setting stream read timeout");
-
-    let mut reader = BufReader::new(stream.try_clone()?);
-    let mut writer = BufWriter::new(stream);
     let mut buf = vec![0_u8; 256];
     let mut running = true;
 
     while running {
-        match message_frame::unframe_message(&mut reader, &mut buf) {
+        match receiver.receive_sync(&mut buf) {
             Err(e) => {
-                if let Some(ie) = e.downcast_ref::<std::io::Error>() {
-                    match ie.kind() {
-                        std::io::ErrorKind::TimedOut | 
-                        std::io::ErrorKind::WouldBlock => {
-                            println!("TcpStream timeout");
+                match e.downcast_ref::<std::io::Error>() {
+                    Some(ie) => {
+                        match ie.kind() {
+                            std::io::ErrorKind::TimedOut | 
+                            std::io::ErrorKind::WouldBlock => {
+                                println!("TcpStream timeout");
+                            }
+                            std::io::ErrorKind::UnexpectedEof => {
+                                println!("receiver UnexpectedEof on TcpStream");
+                                running = false;
+                            }
+                            _ => {return Err(e.into())}
                         }
-                        std::io::ErrorKind::UnexpectedEof => {
-                            println!("receiver UnexpectedEof on TcpStream");
-                            running = false;
-                        }
-                        _ => {return Err(e.into())}
                     }
-                } else {
-                    return Err(e.into());
+                    None => {
+                        return Err(e.into());
+                    }
                 }
             }
             Ok((code, payload)) => {
@@ -114,7 +110,7 @@ fn panel_receiver(stream: TcpStream, _peer_addr: SocketAddr, run_flag: Arc<Atomi
                                 state.reset_state = false;
                             }
                         }
-                        send_status(&mut writer, &state).expect("receiver error sending status");
+                        send_status(&mut sender, &state).expect("receiver error sending status");
                     }
                     Ok("INIT") => {
                         println!("receiver INIT");
@@ -146,7 +142,7 @@ fn panel_receiver(stream: TcpStream, _peer_addr: SocketAddr, run_flag: Arc<Atomi
                     Ok("POWER") => {
                         let on_off = deserialize(payload)?;
                         println!("receiver POWER {}", on_off);
-                        change_power(&mut writer, &mut state, &on_off);
+                        change_power(&mut sender, &mut state, &on_off);
                     }
                     Ok("SHUT") => {
                         running = false;
@@ -164,7 +160,7 @@ fn panel_receiver(stream: TcpStream, _peer_addr: SocketAddr, run_flag: Arc<Atomi
 
         if !run_flag.load(Ordering::Relaxed) {
             running = false;
-            message_frame::frame_message(&mut writer, "KILL", &Vec::new())
+            sender.send_sync("KILL", &Vec::new())
                     .expect("Error sending KILL on receiver exit");
             }
     }
@@ -172,7 +168,7 @@ fn panel_receiver(stream: TcpStream, _peer_addr: SocketAddr, run_flag: Arc<Atomi
     Ok(())
 }
 
-fn change_power(mut writer: &mut BufWriter<TcpStream>, state: &mut ServerState, on_off: &bool) {
+fn change_power(mut sender: &mut MessageSender, state: &mut ServerState, on_off: &bool) {
 
     if state.power_on ^ on_off {
         state.power_on = *on_off;
@@ -197,7 +193,7 @@ fn change_power(mut writer: &mut BufWriter<TcpStream>, state: &mut ServerState, 
         state.a_reg.update_glow(1.0);
         state.busy_ff.update_glow(1.0);
 
-        send_status(&mut writer, &state).expect("Error sending power status");
+        send_status(&mut sender, &state).expect("Error sending power status");
     }
 }
 
@@ -260,11 +256,9 @@ pub fn main(socket_addr: &str) -> Result<()> {
     }).expect("Error establishing Ctrl-C handler");
 
     // Start listening for panel connections
-    let listener = TcpListener::bind(socket_addr)
-                   .expect("Failed to bind TcpListener");
-    listener.set_nonblocking(true)
-            .expect("Error setting non_blocking on TcpListener");
     println!("Listening on {}", socket_addr);
+    let listener = MessageListener::bind_sync(socket_addr)
+                   .expect("Failed to bind TcpListener");
 
     // Spawn the simplistic processor
     let state = state_ref.clone();
@@ -273,34 +267,34 @@ pub fn main(socket_addr: &str) -> Result<()> {
         simple_cpu(run_flag, state)
     });
     
+    // Get the next incoming TCP connection
     while running.load(Ordering::Relaxed) {
-        // Get the next incoming TCP connection
-        match listener.accept() {
-            Err(e) => {
-                if e.kind() == std::io::ErrorKind::WouldBlock {
-                    println!("Server listener accept wait");
-                    thread::sleep(Duration::from_secs(SERVER_TIMEOUT));
-                } else {
-                    return Err(e.into());
-                }
-            }
-            Ok((stream, peer_addr)) => {
-                println!("Connection from {}", peer_addr);
-                
-                // Spawn a thread to handle this connection
-                stream.set_nonblocking(false)
-                      .expect("Error resetting non_blocking on stream");
-                let state = state_ref.clone();
-                let run_flag = running.clone();
-                let receiver = thread::spawn(move || {
-                    panel_receiver(stream, peer_addr, run_flag, state)
-                });
+        match listener.accept_sync(SERVER_TIMEOUT) {
+            Some(r) => {
+                match r {
+                    Err(e) => {
+                        return Err(e.into());
+                    }
+                    Ok(socket) => {
+                        println!("Connection from {}", socket.peer_addr()?);
+                        
+                        // Spawn a thread to handle this connection
+                        let state = state_ref.clone();
+                        let run_flag = running.clone();
+                        let r = socket.receiver();
+                        let s = socket.sender();
+                        let receiver = thread::spawn(move || {
+                            panel_receiver(r, s, run_flag, state)
+                        });
 
-                match receiver.join() {
-                    Ok(_) => println!("server receiver thread terminated normally"),
-                    Err(e) => println!("server receiver thread error {:?}", e)
+                        match receiver.join() {
+                            Ok(_) => println!("server receiver thread terminated normally"),
+                            Err(e) => println!("server receiver thread error {:?}", e)
+                        }
+                    }
                 }
             }
+            None => continue            // accept timed out
         }
     }
 

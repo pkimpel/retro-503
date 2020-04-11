@@ -11,7 +11,10 @@
 *     Original version, largely cloned from imgui-rs crate examples.
 ***********************************************************************/
 
-use glium::glutin::{self, Event, WindowEvent};
+use glium::glutin;
+use glium::glutin::event::{Event, WindowEvent};
+use glium::glutin::event_loop::{ControlFlow, EventLoop};
+use glium::glutin::window::WindowBuilder;
 use glium::{Display, Surface};
 use imgui::{Context, FontConfig, FontId, FontSource, FontGlyphRanges, Ui};
 use imgui_glium_renderer::Renderer;
@@ -22,7 +25,7 @@ const WINDOW_WIDTH: f64 = 540.0;
 const WINDOW_HEIGHT: f64 = 240.0;
 
 pub struct System {
-    pub events_loop: glutin::EventsLoop,
+    pub event_loop: EventLoop<()>,
     pub display: glium::Display,
     pub imgui: Context,
     pub platform: WinitPlatform,
@@ -40,14 +43,14 @@ impl System {
         };
 
         // Create the event loop, graphics context, and OS-level window
-        let events_loop = glutin::EventsLoop::new();
+        let event_loop = EventLoop::new();
         let context = glutin::ContextBuilder::new().with_vsync(true);
-        let builder = glutin::WindowBuilder::new()
+        let builder = WindowBuilder::new()
             .with_title(title.to_owned())
-            .with_dimensions(glutin::dpi::LogicalSize::new(WINDOW_WIDTH, WINDOW_HEIGHT));
+            .with_inner_size(glutin::dpi::LogicalSize::new(WINDOW_WIDTH, WINDOW_HEIGHT));
 
         // Create the Display object to drive OpenGL
-        let display = Display::new(builder, context, &events_loop)
+        let display = Display::new(builder, context, &event_loop)
                               .expect("Failed to initialize display");
 
         // Create and initialize the ImGui context
@@ -59,7 +62,7 @@ impl System {
         {
             let glw = display.gl_window();
             let window = glw.window();
-            platform.attach_window(imgui.io_mut(), &window, HiDpiMode::Rounded);
+            platform.attach_window(imgui.io_mut(), &window, HiDpiMode::Default);
         }
 
         // Get the DPI factor from Winit
@@ -94,7 +97,7 @@ impl System {
 
         // Return the new System instance with the objects just initialized
         System {
-            events_loop,
+            event_loop,
             display,
             imgui,
             platform,
@@ -104,10 +107,12 @@ impl System {
         }
     }
 
-    pub fn main_loop<F: FnMut(&mut bool, &mut Ui)> (self, mut run_ui: F) {
+    pub fn main_loop<F>(self, mut run_ui: F) 
+            where F: FnMut(&mut bool, &mut Ui) + 'static {
+
         // Fetch local references to System member fields
         let System {
-            mut events_loop,
+            event_loop,
             display,
             mut imgui,
             mut platform,
@@ -115,47 +120,48 @@ impl System {
             ..
         } = self;
 
-        // Fetch the window object
-        let glw = display.gl_window();
-        let window = glw.window();
-
         // Initialize the frame-rate timer
         let mut last_frame = Instant::now();
 
-        // Initialize the keep-running flag
-        let mut run = true;
+        // Run the event loop
+        event_loop.run(move |event, _, control_flow| match event {
+            Event::NewEvents(_) => {
+                last_frame = imgui.io_mut().update_delta_time(last_frame)
+            }
+            Event::MainEventsCleared => {
+                let gl_window = display.gl_window();
+                platform
+                    .prepare_frame(imgui.io_mut(), &gl_window.window())
+                    .expect("Failed to prepare frame");
+                gl_window.window().request_redraw();
+            }
+            Event::RedrawRequested(_) => {
+                let mut ui = imgui.frame();
 
-        while run {
-            // Fetch the next group of events and process them in the closure
-            events_loop.poll_events(|event| {
-                platform.handle_event(imgui.io_mut(), &window, &event);
-
-                // Check if the window was closed
-                if let Event::WindowEvent {event, ..} = event {
-                    if let WindowEvent::CloseRequested = event {
-                        run = false;
-                    }
+                let mut run = true;
+                run_ui(&mut run, &mut ui);
+                if !run {
+                    *control_flow = ControlFlow::Exit;
                 }
-            });
 
-            // Prepare to generate the next frame
-            let io = imgui.io_mut();
-            platform.prepare_frame(io, &window)
-                    .expect("Failed to start frame");
-            last_frame = io.update_delta_time(last_frame);
-
-            // Fetch the ImGui Ui instance and call the main_loop closure to draw the UI
-            let mut ui = imgui.frame();
-            run_ui(&mut run, &mut ui);
-
-            // Render the frame and swap buffers to display it
-            let mut target = display.draw();
-            target.clear_color_srgb(0.0, 0.0, 0.0, 1.0);
-            platform.prepare_render(&ui, &window);
-            let draw_data = ui.render();
-            renderer.render(&mut target, draw_data)
+                let gl_window = display.gl_window();
+                let mut target = display.draw();
+                target.clear_color_srgb(0.0, 0.0, 0.0, 1.0);
+                platform.prepare_render(&ui, gl_window.window());
+                let draw_data = ui.render();
+                renderer
+                    .render(&mut target, draw_data)
                     .expect("Rendering failed");
-            target.finish().expect("Failed to swap buffers");
-        } // end while run
+                target.finish().expect("Failed to swap buffers");
+            }
+            Event::WindowEvent {
+                event: WindowEvent::CloseRequested,
+                ..
+            } => *control_flow = ControlFlow::Exit,
+            event => {
+                let gl_window = display.gl_window();
+                platform.handle_event(imgui.io_mut(), gl_window.window(), &event);
+            }
+        })
     }
 } // System impl
