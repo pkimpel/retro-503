@@ -1,5 +1,5 @@
 /***********************************************************************
-* simple-server/src/message_frame.rs
+* simple-system/src/message_frame.rs
 *   Procedures to frame and unframe inter-module messages.
 *   Message frame format:
 *       starting sentinel: [u8;2] hex 5A5A
@@ -41,7 +41,7 @@ impl MessageListener {
 
     pub async fn bind<A>(addr: A) -> Result<MessageListener>
         where A: ToSocketAddrs {
-        /* Asynchronously binds to the provided socket address and creates a 
+        /* Asynchronously binds to the provided socket address and creates a
         listener for that address to be used subsequently by the accept method */
 
         let listener = TcpListener::bind(addr).await?;
@@ -56,9 +56,10 @@ impl MessageListener {
         the peer address */
 
         let (stream, _peer_addr) = self.listener.accept().await?;
+        println!("MessageListener accept: socket NODELAY={}", stream.nodelay().unwrap());
         Ok(MessageSocket::new(stream).await)
     }
-    
+
     pub fn bind_sync<A>(addr: A) -> Result<MessageListener>
         where A: ToSocketAddrs {
         /* Synchronously bind to a socket address and return a listener */
@@ -98,16 +99,17 @@ impl MessageSocket {
 
     pub async fn connect<A>(addr: A) -> Result<Self>
         where A: ToSocketAddrs {
-        /* Asynchronously attempts to connect to a server at the specified 
+        /* Asynchronously attempts to connect to a server at the specified
         socket address */
 
         let stream = TcpStream::connect(addr).await?;
+        println!("MessageSocket connect: socket NODELAY={}", stream.nodelay().unwrap());
         Ok(Self::new(stream).await)
     }
 
     pub fn connect_sync<A>(addr: A) -> Result<Self>
         where A: ToSocketAddrs {
-        /* Synchronously attempts to connect to a server at the specified 
+        /* Synchronously attempts to connect to a server at the specified
         socket address */
         task::block_on(Self::connect(addr))
     }
@@ -125,7 +127,7 @@ impl MessageSocket {
         MessageSender::new(&self.stream)
     }
 
-    pub fn receiver(&self) -> MessageReceiver {				
+    pub fn receiver(&self) -> MessageReceiver {
         /* Creates and returns a new message frame receiver */
         MessageReceiver::new(&self.stream)
     }
@@ -151,7 +153,7 @@ impl MessageSender {
     pub async fn send(&mut self, code: &str, payload: &Vec<u8>) -> Result<()> {
         /* Constructs a framed message and sends asynchronously to writer from
         the message code and payload parameters */
-        
+
         // Write the starting sentinel and message code
         self.writer.write_all(&FRAME_START).await?;
         self.writer.write_all(&[code.len() as u8]).await?;
@@ -185,7 +187,7 @@ pub struct MessageReceiver {
 
 impl MessageReceiver {
 
-    pub fn new(stream: &TcpStream) -> MessageReceiver {	 
+    pub fn new(stream: &TcpStream) -> MessageReceiver {
         /* Returns a new, buffered MessageReceiver for the specified stream */
 
         MessageReceiver {
@@ -195,11 +197,11 @@ impl MessageReceiver {
 
     pub async fn receive<'a> (&mut self, buf: &'a mut Vec<u8>) ->
             Result<(&'a [u8], &'a [u8])> {
-        /* Asynchronously receives a message from reader into buf and unframes 
-        it, returning Result<(code, payload)>, where code and payload are slices 
-        within buf. Note that both values are raw u8 binary data: code is the 
-        message code that will need to be converted to UTF8 by the caller, and 
-        payload is the raw message data that will usually need to be 
+        /* Asynchronously receives a message from reader into buf and unframes
+        it, returning Result<(code, payload)>, where code and payload are slices
+        within buf. Note that both values are raw u8 binary data: code is the
+        message code that will need to be converted to UTF8 by the caller, and
+        payload is the raw message data that will usually need to be
         deserialized by the caller */
 
         let frame_len = FRAME_START.len();

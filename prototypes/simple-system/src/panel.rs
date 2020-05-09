@@ -1,5 +1,5 @@
 /***********************************************************************
-* simple-server/src/panel.rs
+* simple-system/src/panel.rs
 *   Prototype for development of an initial Elliott 503 operator
 *   control panel with pushbottons and lamps.
 * Copyright (C) 2020, Paul Kimpel.
@@ -233,13 +233,13 @@ impl<'a> PanelA<'a> {
             self.type_hold_lamp.build(&ui, state.type_hold_glow);
 
             if self.off_btn.build(&ui, !state.power_on) && state.power_on {
-                println!("Power Off... frames={}, time={}, fps={}", 
+                println!("Power Off... frames={}, time={}, fps={}",
                         state.frames, state.clock, state.frames as f64/state.clock);
                 event_tx.send(Event::PowerChange(false)).unwrap();
             }
 
             if self.on_btn.build(&ui, state.power_on) && !state.power_on {
-                println!("Power On... frames={}, time={}, fps={}", 
+                println!("Power On... frames={}, time={}, fps={}",
                         state.frames, state.clock, state.frames as f64/state.clock);
                 event_tx.send(Event::PowerChange(true)).unwrap();
                 event_tx.send(Event::RequestStatus).unwrap();   // bootstrap the status mechanism
@@ -283,7 +283,7 @@ struct PanelB<'a> {
 impl<'a> PanelB<'a> {
     fn define() -> Self {
         //Define the Panel B widgets
-        
+
         PanelB {
             plotter_manual_btn: PanelButton {
                 position: [10.0, 10.0],
@@ -415,7 +415,7 @@ fn event_sender(event_rx: mpsc::Receiver<Event>, mut sender: MessageSender) -> R
     Ok(())
 }
 
-fn core_receiver(mut receiver: MessageReceiver, event_tx: mpsc::Sender<Event>, 
+fn core_receiver(mut receiver: MessageReceiver, event_tx: mpsc::Sender<Event>,
                 exit_flag: Arc<AtomicBool>, state: Arc<Mutex<PanelState>>) -> Result<()> {
     /* Receive and process messages from the core server task */
 
@@ -428,7 +428,7 @@ fn core_receiver(mut receiver: MessageReceiver, event_tx: mpsc::Sender<Event>,
                 match e.downcast_ref::<std::io::Error>() {
                     Some(ie) => {
                         match ie.kind() {
-                            std::io::ErrorKind::TimedOut | 
+                            std::io::ErrorKind::TimedOut |
                             std::io::ErrorKind::WouldBlock => {
                                 println!("TcpStream timeout");
                             }
@@ -561,7 +561,7 @@ pub fn main(server_addr: &str) -> Result<()> {
     println!("Connected to {} on {}", socket.peer_addr().unwrap(), socket.local_addr().unwrap());
 
     // Start the communication threads
-    
+
     let sender = socket.sender();
     let receiver = socket.receiver();
 
@@ -569,7 +569,7 @@ pub fn main(server_addr: &str) -> Result<()> {
     let event_tx_dup = event_tx.clone();
     let exit_flag_dup = exit_flag.clone();
     let state_dup = state.clone();
-    
+
     let core_thread = thread::spawn(move || {
         core_receiver(receiver, event_tx_dup, exit_flag_dup, state_dup)
     });
@@ -581,14 +581,14 @@ pub fn main(server_addr: &str) -> Result<()> {
     event_tx.send(Event::RequestStatus).unwrap();   // request initial server status
 
     // Instantiate the System infrastructure and default font
-    
+
     let system = System::new(file!());
     let alt_font = system.alt_font;
 
     // Start the System event loop
 
     system.main_loop(move |run, ui| {
-        
+
         // Check to see if the main window has been closed
         if !*run {
             println!("Panel main window closed");
@@ -598,19 +598,19 @@ pub fn main(server_addr: &str) -> Result<()> {
             }
             return;
         }
-        
+
         // Check to see if the server has shut down
         if exit_flag.load(Ordering::Relaxed) {
             println!("Forcing UI to close");
             *run = false;           // terminate the UI rendering loop
             return;
         }
-        
+
         // Set the current font and OS-level window background color
         let our_font = ui.push_font(alt_font);
         let tw = ui.push_style_color(StyleColor::WindowBg, BG_COLOR);
         let ts = ui.push_style_var(StyleVar::WindowRounding(0.0));
-        
+
         // Generate the UI frame
         let mut state = state.lock().unwrap();
         state.frames = ui.frame_count();

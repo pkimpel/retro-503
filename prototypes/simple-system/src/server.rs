@@ -1,5 +1,5 @@
 /***********************************************************************
-* simple-server/src/server.rs
+* simple-system/src/server.rs
 *   Prototype for development of an initial Elliott 503 operator
 *   control panel with pushbottons and lamps.
 * Copyright (C) 2020, Paul Kimpel.
@@ -71,7 +71,7 @@ fn send_status(sender: &mut MessageSender, state: &ServerState) -> Result<()> {
     Ok(())
 }
 
-fn panel_receiver(mut receiver: MessageReceiver, mut sender: MessageSender, 
+fn panel_receiver(mut receiver: MessageReceiver, mut sender: MessageSender,
         run_flag: Arc<AtomicBool>, state: Arc<Mutex<ServerState>>) -> Result<()> {
 
     let mut buf = vec![0_u8; 256];
@@ -83,7 +83,7 @@ fn panel_receiver(mut receiver: MessageReceiver, mut sender: MessageSender,
                 match e.downcast_ref::<std::io::Error>() {
                     Some(ie) => {
                         match ie.kind() {
-                            std::io::ErrorKind::TimedOut | 
+                            std::io::ErrorKind::TimedOut |
                             std::io::ErrorKind::WouldBlock => {
                                 println!("TcpStream timeout");
                             }
@@ -164,7 +164,7 @@ fn panel_receiver(mut receiver: MessageReceiver, mut sender: MessageSender,
                     .expect("Error sending KILL on receiver exit");
             }
     }
-    
+
     Ok(())
 }
 
@@ -198,7 +198,7 @@ fn change_power(mut sender: &mut MessageSender, state: &mut ServerState, on_off:
 }
 
 fn simple_cpu(running: Arc<AtomicBool>, state: Arc<Mutex<ServerState>>) {
-    
+
     loop {
         if !running.load(Ordering::Relaxed) {
             break;
@@ -214,7 +214,7 @@ fn simple_cpu(running: Arc<AtomicBool>, state: Arc<Mutex<ServerState>>) {
                     state.busy_ff.set(count & 1 == 0);
                     state.eclock.advance(TIMER_PERIOD);
                 }
-                
+
                 drop(state);
                 thread::sleep(Duration::from_millis((TIMER_PERIOD*1e6) as u64));
             }
@@ -266,7 +266,7 @@ pub fn main(socket_addr: &str) -> Result<()> {
     let cpu = thread::spawn(move || {
         simple_cpu(run_flag, state)
     });
-    
+
     // Get the next incoming TCP connection
     while running.load(Ordering::Relaxed) {
         match listener.accept_sync(SERVER_TIMEOUT) {
@@ -277,7 +277,7 @@ pub fn main(socket_addr: &str) -> Result<()> {
                     }
                     Ok(socket) => {
                         println!("Connection from {}", socket.peer_addr()?);
-                        
+
                         // Spawn a thread to handle this connection
                         let state = state_ref.clone();
                         let run_flag = running.clone();
@@ -300,7 +300,7 @@ pub fn main(socket_addr: &str) -> Result<()> {
 
     match cpu.join() {
         Ok(_) => println!("server CPU thread terminated normally"),
-        Err(e) => println!("server CPU thread error {:?}", e)                    
+        Err(e) => println!("server CPU thread error {:?}", e)
     }
     Ok(())
 }
