@@ -56,7 +56,7 @@ impl System {
         {
             let glw = display.gl_window();
             let window = glw.window();
-            platform.attach_window(imgui.io_mut(), &window, HiDpiMode::Rounded);
+            platform.attach_window(imgui.io_mut(), &window, HiDpiMode::Default);
         }
 
         // Get the DPI factor from Winit
