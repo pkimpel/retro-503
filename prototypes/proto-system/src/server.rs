@@ -99,7 +99,7 @@ fn panel_receiver(mut receiver: MessageReceiver, mut sender: MessageSender,
                     }
                 }
             }
-            Ok((code, payload)) => {
+            Ok((id, code, payload)) => {
                 let mut state = state.lock().unwrap();
                 match std::str::from_utf8(code) {
                     Ok("STAT") => {
@@ -113,7 +113,7 @@ fn panel_receiver(mut receiver: MessageReceiver, mut sender: MessageSender,
                         send_status(&mut sender, &state).expect("receiver error sending status");
                     }
                     Ok("INIT") => {
-                        println!("receiver INIT");
+                        println!("receiver INIT from {}", String::from_utf8_lossy(id));
                     }
                     Ok("CLEAR") => {
                         println!("receiver CLEAR");
@@ -146,7 +146,7 @@ fn panel_receiver(mut receiver: MessageReceiver, mut sender: MessageSender,
                     }
                     Ok("SHUT") => {
                         running = false;
-                        println!("receiver SHUT");
+                        println!("receiver SHUT from {}", String::from_utf8_lossy(id));
                     }
                     Ok(bad_code) => {
                         println!("receiver unrecognized message code {}", bad_code);
@@ -257,7 +257,7 @@ pub fn main(socket_addr: &str) -> Result<()> {
 
     // Start listening for panel connections
     println!("Listening on {}", socket_addr);
-    let listener = MessageListener::bind_sync(socket_addr)
+    let listener = MessageListener::bind_sync(socket_addr, "MF")
                    .expect("Failed to bind TcpListener");
 
     // Spawn the simplistic processor

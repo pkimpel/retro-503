@@ -55,7 +55,7 @@ pub struct PanelState {
     pub error_glow: f32,
     pub tag_glow: f32,
     pub type_hold_glow: f32,
-    pub bs_parity_glow: f32,
+    pub cbs_parity_glow: f32,
     pub a_glow: Vec<f32>
 }
 
@@ -126,7 +126,7 @@ impl<'a> PanelA<'a> {
                 off_color: GRAY_LIGHT,
                 on_color: GRAY_LIGHT,
                 active_color: Some(GRAY_COLOR),
-                label_text: im_str!("INITIAL"),
+                label_text: im_str!("INITIAL\nINSTR"),
                 ..Default::default()
             },
             no_protn_btn: PanelButton {
@@ -277,7 +277,7 @@ impl<'a> PanelA<'a> {
 
 struct PanelB<'a> {
     plotter_manual_btn: PanelButton<'a>,
-    bs_parity_lamp: PanelLamp<'a>
+    cbs_parity_lamp: PanelLamp<'a>
 }
 
 impl<'a> PanelB<'a> {
@@ -293,12 +293,12 @@ impl<'a> PanelB<'a> {
                 label_text: im_str!("PLOTTER\nMANUAL"),
                 ..Default::default()
             },
-            bs_parity_lamp: PanelLamp {
+            cbs_parity_lamp: PanelLamp {
                 position: [10.0, 130.0],
                 frame_size: [60.0, 40.0],
                 off_color: RED_DARK,
                 on_color: RED_COLOR,
-                label_text: im_str!("BS\nPARITY"),
+                label_text: im_str!("CBS\nPARITY"),
                 ..Default::default()
             }
         }
@@ -319,7 +319,7 @@ impl<'a> PanelB<'a> {
 
         // Build our Panel B window and its inner widgets in the closure
         panel.build(&ui, || {
-            self.bs_parity_lamp.build(&ui, state.bs_parity_glow);
+            self.cbs_parity_lamp.build(&ui, state.cbs_parity_glow);
 
             if self.plotter_manual_btn.build(&ui, state.plotter_manual) && state.power_on {
                 println!("Plotter Manual... {}", if !state.plotter_manual {"On"} else {"Off"});
@@ -448,7 +448,7 @@ fn core_receiver(mut receiver: MessageReceiver, event_tx: mpsc::Sender<Event>,
                     }
                 }
             }
-            Ok((code, payload)) => {
+            Ok((id, code, payload)) => {
                 let mut state = state.lock().unwrap();
                 match std::str::from_utf8(code) {
                     Ok("A") => {
@@ -474,7 +474,7 @@ fn core_receiver(mut receiver: MessageReceiver, event_tx: mpsc::Sender<Event>,
                         state.type_hold_glow = deserialize(payload)?;
                     }
                     Ok("BSPAR") => {
-                        state.bs_parity_glow = deserialize(payload)?;
+                        state.cbs_parity_glow = deserialize(payload)?;
                     }
                     Ok("NOPRO") => {
                         state.no_protn = deserialize(payload)?;
@@ -503,7 +503,7 @@ fn core_receiver(mut receiver: MessageReceiver, event_tx: mpsc::Sender<Event>,
                         }
                     }
                     Ok("KILL") => {
-                        println!("Received KILL from Server");
+                        println!("Received KILL from Server {}", String::from_utf8_lossy(id));
                         running = false;
                         state.power_on = false;
                         event_tx.send(Event::Kill)?;
@@ -549,14 +549,14 @@ pub fn main(server_addr: &str) -> Result<()> {
         error_glow: 0.0,
         tag_glow: 0.0,
         type_hold_glow: 0.0,
-        bs_parity_glow: 0.0,
+        cbs_parity_glow: 0.0,
         a_glow: vec![0.0_f32]
     }));
 
     // Create the internal event channel and TCP connection
 
     let (event_tx, event_rx) = mpsc::channel::<Event>();
-    let socket = MessageSocket::connect_sync(server_addr)
+    let socket = MessageSocket::connect_sync(server_addr, "OC")
             .expect(&format!("Failed to connect to core server on {}", server_addr)[..]);
     println!("Connected to {} on {}", socket.peer_addr().unwrap(), socket.local_addr().unwrap());
 

@@ -3,8 +3,11 @@
 *   Procedures to frame and unframe inter-module messages.
 *   Message frame format:
 *       starting sentinel: [u8;2] hex 5A5A
+*       length of frame, excluding starting and ending sentinels [u8;2] (MSB, LSB)
+*       length of sender_id: u8
+*       sender_id: str
 *       length of event code: u8
-*       event code: str
+*       event_code: str
 *       length of payload: [u8;2] ([MSB, LSB], may be zero)
 *       payload: bincode serialized [u8] (omitted if length=0)
 *       ending sentinel: [u8;2] hex A5A5
@@ -34,18 +37,20 @@ type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>
 /***** MessageListener *****/
 
 pub struct MessageListener {
+    my_id: String,
     listener: TcpListener
 }
 
 impl MessageListener {
 
-    pub async fn bind<A>(addr: A) -> Result<MessageListener>
+    pub async fn bind<A>(addr: A, my_id: &str) -> Result<MessageListener>
         where A: ToSocketAddrs {
         /* Asynchronously binds to the provided socket address and creates a
         listener for that address to be used subsequently by the accept method */
 
         let listener = TcpListener::bind(addr).await?;
         Ok(MessageListener {
+            my_id: my_id.to_string(),
             listener
         })
     }
@@ -56,14 +61,13 @@ impl MessageListener {
         the peer address */
 
         let (stream, _peer_addr) = self.listener.accept().await?;
-        println!("MessageListener accept: socket NODELAY={}", stream.nodelay().unwrap());
-        Ok(MessageSocket::new(stream).await)
+        Ok(MessageSocket::new(stream, self.my_id.as_str()).await)
     }
 
-    pub fn bind_sync<A>(addr: A) -> Result<MessageListener>
+    pub fn bind_sync<A>(addr: A, my_id: &str) -> Result<MessageListener>
         where A: ToSocketAddrs {
         /* Synchronously bind to a socket address and return a listener */
-        task::block_on(Self::bind(addr))
+        task::block_on(Self::bind(addr, my_id))
     }
 
     pub fn accept_sync(&self, timeout_secs: u64) -> Option<Result<MessageSocket>> {
@@ -84,34 +88,35 @@ impl MessageListener {
 /***** MessageSocket *****/
 
 pub struct MessageSocket {
+    my_id: String,
     stream: TcpStream
 }
 
 impl MessageSocket {
 
-    pub async fn new(stream: TcpStream) -> MessageSocket {
+    pub async fn new(stream: TcpStream, my_id: &str) -> MessageSocket {
         /* Creates a new MessageSocket from the stream parameter */
 
         MessageSocket {
+            my_id: my_id.to_string(),
             stream
         }
     }
 
-    pub async fn connect<A>(addr: A) -> Result<Self>
+    pub async fn connect<A>(addr: A, my_id: &str) -> Result<Self>
         where A: ToSocketAddrs {
         /* Asynchronously attempts to connect to a server at the specified
         socket address */
 
         let stream = TcpStream::connect(addr).await?;
-        println!("MessageSocket connect: socket NODELAY={}", stream.nodelay().unwrap());
-        Ok(Self::new(stream).await)
+        Ok(Self::new(stream, my_id).await)
     }
 
-    pub fn connect_sync<A>(addr: A) -> Result<Self>
+    pub fn connect_sync<A>(addr: A, my_id: &str) -> Result<Self>
         where A: ToSocketAddrs {
         /* Synchronously attempts to connect to a server at the specified
         socket address */
-        task::block_on(Self::connect(addr))
+        task::block_on(Self::connect(addr, my_id))
     }
 
     pub fn peer_addr(&self) -> io::Result<SocketAddr> {
@@ -124,7 +129,7 @@ impl MessageSocket {
 
     pub fn sender(&self) -> MessageSender {
         /* Creates and returns a new message frame sender */
-        MessageSender::new(&self.stream)
+        MessageSender::new(&self.stream, self.my_id.as_str())
     }
 
     pub fn receiver(&self) -> MessageReceiver {
@@ -137,15 +142,17 @@ impl MessageSocket {
 /***** MessageSender *****/
 
 pub struct MessageSender {
+    my_id: String,
     writer: BufWriter<TcpStream>
 }
 
 impl MessageSender {
 
-    pub fn new(stream: &TcpStream) -> MessageSender {
+    pub fn new(stream: &TcpStream, my_id: &str) -> MessageSender {
         /* Returns a new, buffered MessageSender for the specified stream */
 
         MessageSender {
+            my_id: my_id.to_string(),
             writer: BufWriter::new(stream.clone())
         }
     }
@@ -153,14 +160,24 @@ impl MessageSender {
     pub async fn send(&mut self, code: &str, payload: &Vec<u8>) -> Result<()> {
         /* Constructs a framed message and sends asynchronously to writer from
         the message code and payload parameters */
+        let my_id_len = self.my_id.len();
+        let code_len = code.len();
+        let payload_len = payload.len();
+        let frame_len = my_id_len + code_len + payload_len +
+                2 + // bytes for frame_len
+                1 + // length byte for my_id
+                1 + // length byte for code
+                2;  // length bytes for payload
 
         // Write the starting sentinel and message code
         self.writer.write_all(&FRAME_START).await?;
+        self.writer.write_all(&[(frame_len >> 8) as u8, (frame_len & 0xFF) as u8]).await?;
+        self.writer.write_all(&[my_id_len as u8]).await?;
+        self.writer.write_all(self.my_id.as_bytes()).await?;
         self.writer.write_all(&[code.len() as u8]).await?;
         self.writer.write_all(code.as_bytes()).await?;
 
         // Write the payload, if any
-        let payload_len = payload.len();
         self.writer.write_all(&[(payload_len >> 8) as u8, (payload_len & 0xFF) as u8]).await?;
         if payload_len > 0 {
             self.writer.write_all(payload).await?;
@@ -196,55 +213,74 @@ impl MessageReceiver {
     }
 
     pub async fn receive<'a> (&mut self, buf: &'a mut Vec<u8>) ->
-            Result<(&'a [u8], &'a [u8])> {
+            Result<(&'a [u8], &'a [u8], &'a [u8])> {
         /* Asynchronously receives a message from reader into buf and unframes
-        it, returning Result<(code, payload)>, where code and payload are slices
-        within buf. Note that both values are raw u8 binary data: code is the
-        message code that will need to be converted to UTF8 by the caller, and
-        payload is the raw message data that will usually need to be
-        deserialized by the caller */
+        it, returning Result<(id, code, payload)>, where id, code, and payload
+        are slices within buf. Note that all values are raw u8 binary data: id
+        is the identifier of the sender, code is the message code that will need
+        to be converted to UTF8 by the caller, and payload is the raw message
+        data that will usually need to be deserialized by the caller */
 
-        let frame_len = FRAME_START.len();
-        let code_x = frame_len + 1;         // account for code-length size
+        let frame_len_x = FRAME_START.len();
+        let id_x = frame_len_x + 2 + 1; // account for frame_length + id_length sizes
+        if buf.len() < id_x {
+            buf.resize(id_x + 256, 0);
+        }
+
         loop {
-            // Read the starting sentinel and code-length bytes
-            self.reader.read_exact(&mut buf[0..code_x]).await?;
+            // Read the starting sentinel, frame_len and id_len bytes
+            self.reader.read_exact(&mut buf[0..id_x]).await?;
             if !buf.starts_with(&FRAME_START) {
-                println!("unframe_message invalid frame start={:?}", &buf[0..frame_len]);
+                println!("unframe_message invalid frame start={:?}", &buf[0..id_x]);
             } else {
-                let code_len = buf[frame_len] as usize;
-                let payload_len_x = code_x + code_len;
-                let payload_x = payload_len_x + 2;
-                if buf.len() < payload_x {
-                    buf.resize(payload_x + 32, 0);
-                }
-
-                // Read the code and payload-length bytes
-                self.reader.read_exact(&mut buf[code_x..payload_x]).await?;
-                let payload_len = ((buf[payload_len_x] as usize) << 8) | buf[payload_len_x+1] as usize;
-                let frame_end_x = payload_x + payload_len;
-                let buf_len = frame_end_x + FRAME_END.len();
-                if buf.len() < buf_len {
-                    buf.resize(buf_len + 32, 0);
-                }
-
-                // Read the payload and ending sentinel bytes
-                self.reader.read_exact(&mut buf[payload_x..buf_len]).await?;
-                if !buf[frame_end_x..].starts_with(&FRAME_END) {
-                    println!("unframe_message invalid frame end={:?}", &buf[0..buf_len]);
-                    return Err("Invalid frame ending sentinel".into());
+                let frame_len = ((buf[frame_len_x] as usize) << 8) | buf[frame_len_x+1] as usize;
+                let frame_end_len = FRAME_END.len();
+                let total_len = frame_len + frame_len_x + frame_end_len;
+                let id_len = buf[frame_len_x+2] as usize;
+                let code_len_x = id_x + id_len;
+                let code_x = code_len_x + 1;
+                if code_x > total_len {
+                    println!("unframe_msg id_len overflow {}+{} > {}", id_x, id_len, total_len);
+                    return Err("Invalid frame id_len".into());
                 } else {
-                    // All is copacetic: construct the sub-slices and return
-                    let code = &buf[code_x..payload_len_x];
-                    let payload = &buf[payload_x..frame_end_x];
-                    return Ok((code, payload));
+                    if buf.len() < total_len {
+                        buf.resize(total_len + 32, 0);
+                    }
+
+                    // Read the remaining bytes and ending sentinel
+                    self.reader.read_exact(&mut buf[id_x..total_len]).await?;
+                    let code_len = buf[code_len_x] as usize;
+                    let payload_len_x = code_x + code_len;
+                    let payload_x = payload_len_x + 2;
+                    if payload_x > total_len {
+                        println!("unframe_msg code_len overflow {}+{} > {}", code_x, code_len, total_len);
+                        return Err("Invalid frame code_len".into());
+                    } else {
+                        let payload_len = ((buf[payload_len_x] as usize) << 8) | buf[payload_len_x+1] as usize;
+                        let frame_end_x = payload_x + payload_len;
+                        if frame_end_x + frame_end_len != total_len {
+                            println!("unframe_msg frame_length mismatch {} : {}", frame_end_x, total_len);
+                            return Err("Invalid frame payload_len".into());
+                        } else {
+                            if !buf[frame_end_x..].starts_with(&FRAME_END) {
+                                println!("unframe_message invalid frame end={:?}", &buf[0..total_len]);
+                                return Err("Invalid frame ending sentinel".into());
+                            } else {
+                                // All is copacetic: construct the sub-slices and return
+                                let id = &buf[id_x..code_len_x];
+                                let code = &buf[code_x..payload_len_x];
+                                let payload = &buf[payload_x..frame_end_x];
+                                return Ok((id, code, payload));
+                            }
+                        }
+                    }
                 }
             }
         }
     }
 
     pub fn receive_sync<'a> (&mut self, buf: &'a mut Vec<u8>) ->
-            Result<(&'a [u8], &'a [u8])> {
+            Result<(&'a [u8], &'a [u8], &'a [u8])> {
         /* Synchronously receive one frame from the socket */
         task::block_on(self.receive(buf))
     }
