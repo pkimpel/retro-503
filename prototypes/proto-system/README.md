@@ -1,0 +1,1 @@
+The proto-system is a proof-of-concept to take the lessons learned from simple-system and further the concept of sepration of panels and I/O devices from the core mainframe server over a TCP/IP connection.

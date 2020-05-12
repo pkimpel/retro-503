@@ -1,0 +1,19 @@
+[package]
+name = "proto-system"
+version = "0.1.0"
+authors = ["Paul Kimpel <paul.kimpel@digm.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+async-std = "1.5"
+futures = "0.3"
+ctrlc = "3.1"
+chrono = "0.4"
+bincode = "1.2"
+glium = { version = "0.26", default-features = true }
+image = "0.23"
+imgui = "0.3"
+imgui-glium-renderer = "0.3"
+imgui-winit-support = "0.3"
