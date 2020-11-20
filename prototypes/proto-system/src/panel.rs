@@ -60,6 +60,7 @@ pub struct PanelState {
 }
 
 enum Event {
+    IAm,
     ShutDown,
     Kill,
     RequestStatus,
@@ -402,6 +403,9 @@ fn event_sender(event_rx: mpsc::Receiver<Event>, mut sender: MessageSender) -> R
             PlotterManual(state) => {
                 sender.send_sync("PLTMN", &serialize(&state)?)?;
             }
+            IAm => {
+                sender.send_sync("IAM", &Vec::new())?;
+            }
             ShutDown => {
                 sender.send_sync("SHUT", &Vec::new())?;
                 break;
@@ -501,6 +505,10 @@ fn core_receiver(mut receiver: MessageReceiver, event_tx: mpsc::Sender<Event>,
                         if state.status_request_count > 0 {
                             state.status_request_count -= 1;
                         }
+                    }
+                    Ok("WRU") => {															  
+                        println!("Received WRU from Server {}", String::from_utf8_lossy(id));
+                        event_tx.send(Event::IAm);
                     }
                     Ok("KILL") => {
                         println!("Received KILL from Server {}", String::from_utf8_lossy(id));

@@ -12,6 +12,8 @@
 *       https://github.com/async-rs/async-std/tree/master/examples/a-chat
 ***********************************************************************/
 
+#![recursion_limit="256"]
+
 pub mod panel;
 pub mod server;
 pub mod message_frame;

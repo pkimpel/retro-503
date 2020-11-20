@@ -8,299 +8,179 @@
 ************************************************************************
 * Modification log.
 * 2020-03-22  P.Kimpel
-*   Original version, from simple-system.
+*   Original version, from panel-prototype.
 ***********************************************************************/
 
-
-use std::thread;
-use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::Duration;
+use std::time::{Duration, Instant};
+use std::str;
 
-use bincode::{serialize, deserialize};
+use async_std::prelude::*;
+use async_std::sync::{Arc, Mutex};
+use async_std::task::{self, JoinHandle};
+use futures::{select, FutureExt};
+use futures::channel::mpsc::{self};
+use futures::sink::SinkExt;
+
+//use bincode::{serialize, deserialize};
 use ctrlc;
 
-use crate::message_frame::{MessageListener, MessageSender, MessageReceiver};
+//use crate::event::Event;
+use crate::message_frame::{MessageListener, MessageSocket, MessageSender, MessageReceiver};
 
 mod register;
-use register::{Register, FlipFlop, EmulationClock};
+//use register::{Register, FlipFlop, EmulationClock};
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
 const SERVER_TIMEOUT: u64 = 5;          // sec
 const TIMER_PERIOD: f64 = 7.2e-6;       // sec
 
-pub struct ServerState {
-    pub last_clock: f64,
-    pub eclock: Arc<EmulationClock>,
-    pub reset_countdown: u32,
-    // Push-push (toggle) button states
-    pub power_on: bool,
-    pub no_protn: bool,
-    pub plotter_manual: bool,
-    pub manual_state: bool,
-    pub reset_state: bool,
-    // lamp intensities
-    pub transfer_glow: f32,
-    pub air_cond_glow: f32,
-    pub error_glow: f32,
-    pub tag_glow: f32,
-    pub type_hold_glow: f32,
-    pub bs_parity_glow: f32,
-    // Registers & Flip-flops
-    pub busy_ff : FlipFlop,
-    pub a_reg: Register<u32>
+enum BrokerEvent {
+    NewClient(MessageSocket, String),
+    NewConnection(MessageSocket)
 }
 
-fn send_status(sender: &mut MessageSender, state: &ServerState) -> Result<()> {
+async fn connection_identifier(socket: MessageSocket, mut broker_queue: mpsc::Sender<BrokerEvent>) {
+    /* Solicits a new connection for its client ID. If the client returns one in a
+    reasonable time, queues the client's socket and ID back to the broker for
+    acceptance and setup. If validation is not successful, the socket is simply dropped
+    upon exit from the function */
+    let mut buf: Vec<u8> = Vec::with_capacity(32);
+    let mut socket_sender = socket.sender();
+    let mut socket_receiver = socket.receiver();
 
-    sender.send_sync("POWER", &serialize(&state.power_on)?)?;
-    sender.send_sync("NOPRO", &serialize(&state.no_protn)?)?;
-    sender.send_sync("MANL", &serialize(&state.manual_state)?)?;
-    sender.send_sync("RESET", &serialize(&state.reset_state)?)?;
-    sender.send_sync("PLTMN", &serialize(&state.plotter_manual)?)?;
-    sender.send_sync("XFER", &serialize(&state.transfer_glow)?)?;
-    sender.send_sync("AC", &serialize(&state.air_cond_glow)?)?;
-    sender.send_sync("ERROR", &serialize(&state.error_glow)?)?;
-    sender.send_sync("TAG", &serialize(&state.tag_glow)?)?;
-    sender.send_sync("THOLD", &serialize(&state.type_hold_glow)?)?;
-    sender.send_sync("BSPAR", &serialize(&state.bs_parity_glow)?)?;
-    sender.send_sync("BUSY", &serialize(&state.busy_ff.read_glow())?)?;
-    sender.send_sync("A", &serialize(&state.a_reg.read_glow())?)?;
-    sender.send_sync("ESTAT", &Vec::new())?;
-    Ok(())
-}
+    const TIMEOUT_SECS: Duration = Duration::from_secs(2);
 
-fn panel_receiver(mut receiver: MessageReceiver, mut sender: MessageSender,
-        run_flag: Arc<AtomicBool>, state: Arc<Mutex<ServerState>>) -> Result<()> {
+    // Send a "WRU" query to the new client
+    let result = socket_sender.send("WRU", &Vec::new()).await;
+    match result {
+        Ok(_) => {}
+        Err(e) => {
+            println!("Error sending connection_identifier WRU: {}", e);
+            return;
+        }
+    }
 
-    let mut buf = vec![0_u8; 256];
-    let mut running = true;
-
-    while running {
-        match receiver.receive_sync(&mut buf) {
+    // Wait for a response from the client or a timeout
+    select! {
+        r = socket_receiver.receive(&mut buf).fuse() => match r {
             Err(e) => {
-                match e.downcast_ref::<std::io::Error>() {
-                    Some(ie) => {
-                        match ie.kind() {
-                            std::io::ErrorKind::TimedOut |
-                            std::io::ErrorKind::WouldBlock => {
-                                println!("TcpStream timeout");
-                            }
-                            std::io::ErrorKind::UnexpectedEof => {
-                                println!("receiver UnexpectedEof on TcpStream");
-                                running = false;
-                            }
-                            _ => {return Err(e.into())}
-                        }
-                    }
-                    None => {
-                        return Err(e.into());
-                    }
-                }
+                println!("Error receiving connection_identifier WRU reply: {}", e);
             }
             Ok((id, code, payload)) => {
-                let mut state = state.lock().unwrap();
-                match std::str::from_utf8(code) {
-                    Ok("STAT") => {
-                        //println!("receiver STAT");
-                        if state.reset_countdown > 0 {
-                            state.reset_countdown -= 1;
-                            if state.reset_countdown == 0 {
-                                state.reset_state = false;
-                            }
+                match str::from_utf8(code) {
+                    Err(_) => {
+                        println!("UTF-8 error in connection_identifier WRU code {:?}", code)
+                    }
+                    Ok("IAM") => {
+                        if let Ok(id) = str::from_utf8(id) {
+                            println!("Server IAM received from {}", id);
+                            broker_queue.send(BrokerEvent::NewClient(socket, id.to_string())).await;
+                        } else {
+                            println!("UTF-8 error in connection_identifier WRU payload {:?}", payload);
                         }
-                        send_status(&mut sender, &state).expect("receiver error sending status");
                     }
-                    Ok("INIT") => {
-                        println!("receiver INIT from {}", String::from_utf8_lossy(id));
-                    }
-                    Ok("CLEAR") => {
-                        println!("receiver CLEAR");
-                        state.a_reg.set(0);
-                    }
-                    Ok("RESET") => {
-                        println!("receiver RESET");
-                        state.reset_state = true;
-                        state.reset_countdown = 15;
-                    }
-                    Ok("MANL") => {
-                        let on_off = deserialize(payload)?;
-                        println!("receiver MANL {}", on_off);
-                        state.manual_state = on_off;
-                    }
-                    Ok("PLTMN") => {
-                        let on_off = deserialize(payload)?;
-                        println!("receiver PLTMN {}", on_off);
-                        state.plotter_manual = on_off;
-                    }
-                    Ok("NOPRO") => {
-                        let on_off = deserialize(payload)?;
-                        println!("receiver NOPRO {}", on_off);
-                        state.no_protn = on_off;
-                    }
-                    Ok("POWER") => {
-                        let on_off = deserialize(payload)?;
-                        println!("receiver POWER {}", on_off);
-                        change_power(&mut sender, &mut state, &on_off);
-                    }
-                    Ok("SHUT") => {
-                        running = false;
-                        println!("receiver SHUT from {}", String::from_utf8_lossy(id));
-                    }
-                    Ok(bad_code) => {
-                        println!("receiver unrecognized message code {}", bad_code);
-                    }
-                    Err(e) => {
-                        println!("receiver corrupt message code {:?} -- {}", code, e);
+                    Ok(_) => {
+                        println!("invalid reply code in connection_identifier WRU response ")
                     }
                 }
             }
+        },
+        t = task::sleep(TIMEOUT_SECS).fuse() => {
+            println!("Timeout receiving connection_identifier WRU reply: {}", socket.peer_addr().unwrap());
         }
+    };
+}
 
-        if !run_flag.load(Ordering::Relaxed) {
-            running = false;
-            sender.send_sync("KILL", &Vec::new())
-                    .expect("Error sending KILL on receiver exit");
+async fn connection_broker(broker_queue: mpsc::Sender<BrokerEvent>, broker_receiver: mpsc::Receiver<BrokerEvent>) {
+    /* Broker for managing client connections */
+    let mut broker_receiver = broker_receiver.fuse();
+
+    while let Some(ev) = broker_receiver.next().await {
+        match ev {
+            BrokerEvent::NewConnection(socket) => {
+                task::spawn(connection_identifier(socket, broker_queue.clone()));
             }
-    }
+            BrokerEvent::NewClient(socket, id) => {
 
-    Ok(())
-}
-
-fn change_power(mut sender: &mut MessageSender, state: &mut ServerState, on_off: &bool) {
-
-    if state.power_on ^ on_off {
-        state.power_on = *on_off;
-        state.manual_state = false;
-        state.plotter_manual = false;
-        state.no_protn = false;
-        state.reset_state = false;
-        state.transfer_glow = 0.0;
-        state.air_cond_glow = 0.0;
-        state.error_glow = 0.0;
-        state.tag_glow = 0.0;
-        state.type_hold_glow = 0.0;
-        state.bs_parity_glow = 0.0;
-        state.busy_ff.set(false);
-        if *on_off {
-            state.a_reg.add(7654321);
-        } else {
-            state.a_reg.set(0);
+            }
         }
-
-        state.eclock.advance(1e6);
-        state.a_reg.update_glow(1.0);
-        state.busy_ff.update_glow(1.0);
-
-        send_status(&mut sender, &state).expect("Error sending power status");
     }
 }
 
-fn simple_cpu(running: Arc<AtomicBool>, state: Arc<Mutex<ServerState>>) {
+async fn serve(socket_addr: String, mut grim_reaper: mpsc::Receiver<()>) {
+    /* Creates a MessageListener and accepts incoming connections from it.
+    Runs until the sender for the grim_reaper channel is dropped */
 
+    // Create the broker event queue channel and spawn the broker
+    let (mut broker_queue, broker_receiver) = mpsc::channel::<BrokerEvent>(2000);
+    let broker_handle = task::Builder::new()
+        .name("Connection_Broker".to_string())
+        .spawn(connection_broker(broker_queue.clone(), broker_receiver))
+        .unwrap();
+
+    // Instantiate the processor
+    // let mut cpu = SimpleCPU::new(event_receiver);
+    //
+    // // Spawn the simplistic processor
+    // let run_flag = running.clone();
+    // let cpu = thread::spawn(move || {
+    //     simple_cpu(run_flag, state)
+    // });
+
+    // Start listening for panel connections
+    let listener = MessageListener::bind(socket_addr.as_str(), "MF").await
+            .expect("Failed to bind TcpListener");
+    println!("Listening on {}", socket_addr);
+
+    // Get the next incoming TCP connection
     loop {
-        if !running.load(Ordering::Relaxed) {
-            break;
-        } else {
-            let mut state = state.lock().unwrap();
-            if !state.power_on {
-                drop(state);
-                thread::sleep(Duration::from_secs(2));
-            } else {
-                for _ in 0..500 {
-                    let count = state.a_reg.read();
-                    state.a_reg.add(1);
-                    state.busy_ff.set(count & 1 == 0);
-                    state.eclock.advance(TIMER_PERIOD);
+        select! {
+            s = listener.accept().fuse() => {
+                match s {
+                    Err(e) => {
+                        // let msg = e.message();
+                        println!("Connection accept error: {}", e);
+                    }
+                    Ok(socket) => {
+                        let peer_addr = socket.peer_addr().unwrap();
+                        println!("Connection from {}", peer_addr);
+                        broker_queue.send(BrokerEvent::NewConnection(socket)).await.unwrap();
+                    }
                 }
+            }
 
-                drop(state);
-                thread::sleep(Duration::from_millis((TIMER_PERIOD*1e6) as u64));
+            g = grim_reaper.next().fuse() => {
+                println!("Function serve grimly reaped");
+                break;
             }
         }
     }
+
+    drop(broker_queue);
+    broker_handle.await;
 }
 
 pub fn main(socket_addr: &str) -> Result<()> {
-    let eclock = Arc::new(EmulationClock::new(0.0));
-
-    let mut state = ServerState {
-        last_clock: 0.0,
-        eclock: eclock.clone(),
-        reset_countdown: 0,
-        power_on: false,
-        no_protn: false,
-        plotter_manual: false,
-        manual_state: false,
-        reset_state: false,
-        transfer_glow: 0.0,
-        air_cond_glow: 0.0,
-        error_glow: 0.0,
-        tag_glow: 0.0,
-        type_hold_glow: 0.0,
-        bs_parity_glow: 0.0,
-        busy_ff: FlipFlop::new(eclock.clone()),
-        a_reg: Register::new(30, eclock.clone())
-    };
-
-    state.a_reg.set(1234567);
-    let state_ref = Arc::new(Mutex::new(state));
 
     // Set up a shared Boolean and Ctrl-C handler
     let running = Arc::new(AtomicBool::new(true));
+
+    let (grim_sender, grim_reaper) = mpsc::channel::<()>(1);
+
     let r = running.clone();
     ctrlc::set_handler(move || {
         println!("Ctrl-C signaled");
         r.store(false, Ordering::Relaxed);
+        let _ = grim_sender.is_closed();
     }).expect("Error establishing Ctrl-C handler");
 
-    // Start listening for panel connections
-    println!("Listening on {}", socket_addr);
-    let listener = MessageListener::bind_sync(socket_addr, "MF")
-                   .expect("Failed to bind TcpListener");
+    task::block_on(task::Builder::new()
+        .name("Server_Main".to_string())
+        .spawn(serve(socket_addr.to_string(), grim_reaper))
+        .unwrap()
+    );
 
-    // Spawn the simplistic processor
-    let state = state_ref.clone();
-    let run_flag = running.clone();
-    let cpu = thread::spawn(move || {
-        simple_cpu(run_flag, state)
-    });
-
-    // Get the next incoming TCP connection
-    while running.load(Ordering::Relaxed) {
-        match listener.accept_sync(SERVER_TIMEOUT) {
-            Some(r) => {
-                match r {
-                    Err(e) => {
-                        return Err(e.into());
-                    }
-                    Ok(socket) => {
-                        println!("Connection from {}", socket.peer_addr()?);
-
-                        // Spawn a thread to handle this connection
-                        let state = state_ref.clone();
-                        let run_flag = running.clone();
-                        let r = socket.receiver();
-                        let s = socket.sender();
-                        let receiver = thread::spawn(move || {
-                            panel_receiver(r, s, run_flag, state)
-                        });
-
-                        match receiver.join() {
-                            Ok(_) => println!("server receiver thread terminated normally"),
-                            Err(e) => println!("server receiver thread error {:?}", e)
-                        }
-                    }
-                }
-            }
-            None => continue            // accept timed out
-        }
-    }
-
-    match cpu.join() {
-        Ok(_) => println!("server CPU thread terminated normally"),
-        Err(e) => println!("server CPU thread error {:?}", e)
-    }
     Ok(())
 }
