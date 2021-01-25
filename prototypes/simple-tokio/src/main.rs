@@ -1,15 +1,14 @@
 /***********************************************************************
-* simple-system/src/main.rs
+* simple-tokio/src/main.rs
 *   Prototype for development of an initial Elliott 503 operator
 *   control panel with pushbottons and lamps.
-* Copyright (C) 2020, Paul Kimpel.
+* Copyright (C) 2021, Paul Kimpel.
 * Licensed under the MIT License, see
 *       http://www.opensource.org/licenses/mit-license.php
 ************************************************************************
 * Modification log.
-* 2020-03-12  P.Kimpel
-*   Original version, from
-*       https://github.com/async-rs/async-std/tree/master/examples/a-chat
+* 2021-01-24  P.Kimpel
+*   Original version, from simple-system/src/main.rs.
 ***********************************************************************/
 
 pub mod panel;
@@ -27,6 +26,6 @@ fn main() -> Result<()> {
         (Some("panel"), Some(addr), None) => panel::main(addr),
         (Some("server"), None, None) => server::main(DEFAULT_SOCKET),
         (Some("server"), Some(addr), None) => server::main(addr),
-        _ => Err("Usage: simple-system panel|server [socket-addr]".into()),
+        _ => Err("Usage: simple-tokio panel|server [socket-addr]".into()),
     }
 }

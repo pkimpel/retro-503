@@ -1,14 +1,14 @@
 /***********************************************************************
-* panel-prototype/src/widgets/mod.rs
+* simple-tokio/src/widgets/mod.rs
 *   Module "widgets".
 *   User interface widgets for buttons, switches, lamps, etc.
-* Copyright (C) 2020, Paul Kimpel.
+* Copyright (C) 2021, Paul Kimpel.
 * Licensed under the MIT License, see
 *       http://www.opensource.org/licenses/mit-license.php
 ************************************************************************
 * Modification log.
-* 2020-02-07  P.Kimpel
-*     Original version.
+* 2021-01-24  P.Kimpel
+*     Original version, from simple-system/src/widgets/mod.rs.
 ***********************************************************************/
 #![allow(dead_code)]
 

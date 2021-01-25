@@ -1,14 +1,14 @@
 /***********************************************************************
-* panel-prototype/src/widgets/register_display.rs
+* simple-tokio/src/widgets/register_display.rs
 *      Module "widgets::register_display".
 *      Panel lamps.
-* Copyright (C) 2020, Paul Kimpel.
+* Copyright (C) 2021, Paul Kimpel.
 * Licensed under the MIT License, see
 *      http://www.opensource.org/licenses/mit-license.php
 ************************************************************************
 * Modification log.
-* 2020-02-16  P.Kimpel
-*     Original version, cloned from widgets/register_lamp.rs.
+* 2021-01-24  P.Kimpel
+*     Original version, cloned from simple-system/widgets/register_lamp.rs.
 ***********************************************************************/
 
 use imgui::{im_str, ImStr, StyleColor, StyleVar, Ui};

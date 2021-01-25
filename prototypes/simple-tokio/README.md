@@ -1,1 +1,1 @@
-The simple-system is a proof-of-concept to take the lessons learned from panel-prototype and implement a panel connected to a simple processor over a TCP/IP connection.
+The simple-tokio is a conversion and update of simple-system to replace async-std with tokio. It implements a GUI control panel connected to a simple processor over a TCP/IP connection.

@@ -1,14 +1,14 @@
 /***********************************************************************
-* panel-prototype/src/server/register.rs
+* simple-tokio/src/server/register.rs
 *   Module "register" for a generic register object with time-averaged
 *   lamp-glow averaging.
-* Copyright (C) 2020, Paul Kimpel.
+* Copyright (C) 2021, Paul Kimpel.
 * Licensed under the MIT License, see
 *       http://www.opensource.org/licenses/mit-license.php
 ************************************************************************
 * Modification log.
-* 2020-02-09  P.Kimpel
-*   Original version.
+* 2021-01-24  P.Kimpel
+*   Original version, from simple-system/src/server/register.rs.
 ***********************************************************************/
 
 #![allow(unused_variables, dead_code)]     // for now...

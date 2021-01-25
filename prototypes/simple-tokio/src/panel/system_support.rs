@@ -1,14 +1,14 @@
 /***********************************************************************
-* panel-prototype/src/system_support.rs
+* simple-tokio/src/system_support.rs
 *   Module "system_support" for instantiation and configuration of
 *   glium/glutin/winit infrastructure.
-* Copyright (C) 2020, Paul Kimpel.
+* Copyright (C) 2021, Paul Kimpel.
 * Licensed under the MIT License, see
 *       http://www.opensource.org/licenses/mit-license.php
 ************************************************************************
 * Modification log.
-* 2020-02-06  P.Kimpel
-*     Original version, largely cloned from imgui-rs crate examples.
+* 2021-01-24  P.Kimpel
+*     Original version, from simple-system/src/system_support.rs.
 ***********************************************************************/
 
 use glium::glutin;
@@ -126,7 +126,9 @@ impl System {
         // Run the event loop
         event_loop.run(move |event, _, control_flow| match event {
             Event::NewEvents(_) => {
-                last_frame = imgui.io_mut().update_delta_time(last_frame)
+                let now = Instant::now();
+                imgui.io_mut().update_delta_time(now - last_frame);
+                last_frame = now;
             }
             Event::MainEventsCleared => {
                 let gl_window = display.gl_window();

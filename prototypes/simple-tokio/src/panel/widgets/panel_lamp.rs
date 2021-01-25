@@ -1,14 +1,14 @@
 /***********************************************************************
-* panel-prototype/src/widgets/panel_lamp.rs
+* simple-tokio/src/widgets/panel_lamp.rs
 *   Module "widgets::panel_lamp".
 *   Panel lamps.
-* Copyright (C) 2020, Paul Kimpel.
+* Copyright (C) 2021, Paul Kimpel.
 * Licensed under the MIT License, see
 *       http://www.opensource.org/licenses/mit-license.php
 ************************************************************************
 * Modification log.
-* 2020-02-07  P.Kimpel
-*     Original version.
+* 2021-01-24  P.Kimpel
+*     Original version, from simple-system/src/widgets/panel_lamp.rs.
 ***********************************************************************/
 
 use imgui::{im_str, ImStr, StyleColor, StyleVar, Ui};
