@@ -11,19 +11,19 @@
 *   Original version, from panel-prototype.
 ***********************************************************************/
 
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::{Duration, Instant};
 use std::str;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
-use async_std::prelude::*;
-use async_std::sync::{Arc, Mutex};
-use async_std::task::{self, JoinHandle};
-use futures::{select, FutureExt};
-use futures::channel::mpsc::{self};
-use futures::sink::SinkExt;
+//use async_std::prelude::*;
+use tokio::task::{self, JoinHandle};
+//use futures::{select, FutureExt};
+use tokio::sync::mpsc;
+//use futures::sink::SinkExt;
 
 //use bincode::{serialize, deserialize};
-use ctrlc;
+//use ctrlc;
 
 //use crate::event::Event;
 use crate::message_frame::{MessageListener, MessageSocket, MessageSender, MessageReceiver};
@@ -63,7 +63,7 @@ async fn connection_identifier(socket: MessageSocket, mut broker_queue: mpsc::Se
     }
 
     // Wait for a response from the client or a timeout
-    select! {
+    tokio::select! {
         r = socket_receiver.receive(&mut buf).fuse() => match r {
             Err(e) => {
                 println!("Error receiving connection_identifier WRU reply: {}", e);
@@ -136,7 +136,7 @@ async fn serve(socket_addr: String, mut grim_reaper: mpsc::Receiver<()>) {
 
     // Get the next incoming TCP connection
     loop {
-        select! {
+        tokio::select! {
             s = listener.accept().fuse() => {
                 match s {
                     Err(e) => {

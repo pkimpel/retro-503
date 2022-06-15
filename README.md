@@ -1,6 +1,6 @@
-The Elliott 503 was a binary, transistorized, single-address, core-memory computer system designed and manufactured by Elliott Automation (nèe Elliott Brothers Ltd.) in the United Kingdom and first shipped in 1963.
+## DEVELOPMENT OF THIS PROJECT IS CURRENTLY SUSPENDED
 
-     THIS PROJECT IS PRESENTLY IN INITIAL DEVELOPMENT
+The Elliott 503 was a binary, transistorized, single-address, core-memory computer system designed and manufactured by Elliott Automation (nï¿½e Elliott Brothers Ltd.) in the United Kingdom and first shipped in 1963.
 
 The main goal of this project is creation of a cross-platform emulator for the 503 written in the Rust language.
 

@@ -6,7 +6,7 @@
 *       length of frame, excluding starting and ending sentinels [u8;2] (MSB, LSB)
 *       length of sender_id: u8
 *       sender_id: str
-*       length of event code: u8
+*       length of event_code: u8
 *       event_code: str
 *       length of payload: [u8;2] ([MSB, LSB], may be zero)
 *       payload: bincode serialized [u8] (omitted if length=0)
@@ -21,12 +21,16 @@
 *   Original version.
 ***********************************************************************/
 
-use async_std::task;
-use async_std::io::{self, BufReader, BufWriter};
-use async_std::io::prelude::*;
-use async_std::net::{TcpListener, TcpStream, SocketAddr, ToSocketAddrs};
-use futures::{select, FutureExt};
 use std::time::Duration;
+use std::sync::{Arc, Mutex};
+use std::net::SocketAddr;
+use tokio::task;
+use tokio::io::{AsyncReadExt, BufReader, AsyncWriteExt, BufWriter};
+//use async_std::io::prelude::*;
+use tokio::net::{TcpListener, TcpStream, ToSocketAddrs};
+use tokio::runtime::Runtime;
+use tokio::time;
+//use futures::{select, FutureExt};
 
 pub const FRAME_START: [u8;2] = [0x5A, 0x5A];
 pub const FRAME_END: [u8;2] = [0xA5, 0xA5];
@@ -64,24 +68,32 @@ impl MessageListener {
         Ok(MessageSocket::new(stream, self.my_id.as_str()).await)
     }
 
-    pub fn bind_sync<A>(addr: A, my_id: &str) -> Result<MessageListener>
-        where A: ToSocketAddrs {
-        /* Synchronously bind to a socket address and return a listener */
-        task::block_on(Self::bind(addr, my_id))
-    }
+    // pub fn bind_sync<A>(addr: A, my_id: &str) -> Result<MessageListener>
+    //     where A: ToSocketAddrs {
+    //     /* Synchronously bind to a socket address and return a listener */
+    //     let mut runtime = Runtime::new()?;
+    //     let listener = runtime.block_on(Self::bind(addr, my_id))?;
+    //     Ok(listener)
+    // }
 
-    pub fn accept_sync(&self, timeout_secs: u64) -> Option<Result<MessageSocket>> {
-        /* Synchronously accept the next connection from the listener, timing
-        out and returning None if no connection is available within timeout_secs
-        seconds */
+    // pub fn accept_sync(&self, timeout_secs: u64) -> Option<Result<MessageSocket>> {
+    //     /* Synchronously accept the next connection from the listener, timing
+    //     out and returning None if no connection is available within timeout_secs
+    //     seconds */
 
-        task::block_on(async {
-            select! {
-                s = self.accept().fuse() => {Some(s)}
-                t = task::sleep(Duration::from_secs(timeout_secs)).fuse() => {None}
-            }
-        })
-    }
+    //     let mut runtime = Runtime::new().unwrap();
+    //     runtime.block_on(async {
+    //         tokio::select! {
+    //             s = self.accept().await? => {
+    //                 s.set_runtime(runtime);
+    //                 Some(s)
+    //             }
+    //             _ = time::sleep(Duration::from_secs(timeout_secs)) => {
+    //                 None
+    //             }
+    //         }
+    //     })
+    // }
 }
 
 
@@ -89,7 +101,8 @@ impl MessageListener {
 
 pub struct MessageSocket {
     my_id: String,
-    stream: TcpStream
+    stream: TcpStream,
+    //runtime: Arc<Mutex<Option<Runtime>>>    // used only in sync contexts
 }
 
 impl MessageSocket {
@@ -99,7 +112,8 @@ impl MessageSocket {
 
         MessageSocket {
             my_id: my_id.to_string(),
-            stream
+            stream,
+            //runtime: Arc::new(Mutex::new(None))
         }
     }
 
@@ -112,18 +126,24 @@ impl MessageSocket {
         Ok(Self::new(stream, my_id).await)
     }
 
-    pub fn connect_sync<A>(addr: A, my_id: &str) -> Result<Self>
-        where A: ToSocketAddrs {
-        /* Synchronously attempts to connect to a server at the specified
-        socket address */
-        task::block_on(Self::connect(addr, my_id))
-    }
+    // pub fn connect_sync<A>(addr: A, my_id: &str) -> Result<Self>
+    //     where A: ToSocketAddrs {
+    //     /* Synchronously attempts to connect to a server at the specified
+    //     socket address */
+    //     let my_id = my_id.to_string();
+    //     let runtime = Runtime::new()?;
+    //     runtime.block_on(async {
+    //         let socket = Self::connect(addr, my_id).await?;
+    //         socket.set_runtime(runtime);
+    //         Ok(socket)
+    //     })
+    // }
 
-    pub fn peer_addr(&self) -> io::Result<SocketAddr> {
+    pub fn peer_addr(&self) -> tokio::io::Result<SocketAddr> {
         self.stream.peer_addr()
     }
 
-    pub fn local_addr(&self) -> io::Result<SocketAddr> {
+    pub fn local_addr(&self) -> tokio::io::Result<SocketAddr> {
         self.stream.local_addr()
     }
 
@@ -136,6 +156,12 @@ impl MessageSocket {
         /* Creates and returns a new message frame receiver */
         MessageReceiver::new(&self.stream)
     }
+
+    // pub fn set_runtime(&mut self, runtime: Runtime) {
+    //     /* sets the tokio runtime for use in sync contexts */
+    //     let rt = self.runtime.lock().unwrap();
+    //     *rt = Some(runtime);
+    // }
 }
 
 
@@ -189,10 +215,10 @@ impl MessageSender {
         Ok(())
     }
 
-    pub fn send_sync(&mut self, code: &str, payload: &Vec<u8>) -> Result<()> {
-        /* Synchronously sends a framed message to the socket */
-        task::block_on(self.send(code, payload))
-    }
+    // pub fn send_sync(&mut self, code: &str, payload: &Vec<u8>) -> Result<()> {
+    //     /* Synchronously sends a framed message to the socket */
+    //     tokio::block_on(self.send(code, payload))
+    // }
 }
 
 
@@ -279,9 +305,9 @@ impl MessageReceiver {
         }
     }
 
-    pub fn receive_sync<'a> (&mut self, buf: &'a mut Vec<u8>) ->
-            Result<(&'a [u8], &'a [u8], &'a [u8])> {
-        /* Synchronously receive one frame from the socket */
-        task::block_on(self.receive(buf))
-    }
+    // pub fn receive_sync<'a> (&mut self, buf: &'a mut Vec<u8>) ->
+    //         Result<(&'a [u8], &'a [u8], &'a [u8])> {
+    //     /* Synchronously receive one frame from the socket */
+    //     tokio::block_on(self.receive(buf))
+    // }
 }

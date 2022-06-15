@@ -3,12 +3,14 @@ name = "simple-tokio"
 version = "0.1.0"
 authors = ["Paul Kimpel <paul.kimpel@digm.com>"]
 edition = "2018"
+license = "MIT"
+readme = "README.md"
+repository = "https://github.com/pkimpel/retro-503/prototypes/proto-system"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-async-std = "1.5"
-futures = "0.3"
+tokio = {version="1", features=["full"]}
 ctrlc = "3.1"
 chrono = "0.4"
 bincode = "1.2"

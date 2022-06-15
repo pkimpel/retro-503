@@ -508,7 +508,7 @@ fn core_receiver(mut receiver: MessageReceiver, event_tx: mpsc::Sender<Event>,
                     }
                     Ok("WRU") => {															  
                         println!("Received WRU from Server {}", String::from_utf8_lossy(id));
-                        event_tx.send(Event::IAm);
+                        event_tx.send(Event::IAm)?;
                     }
                     Ok("KILL") => {
                         println!("Received KILL from Server {}", String::from_utf8_lossy(id));
